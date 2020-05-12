@@ -22,25 +22,15 @@ export interface IBitSwap {
   stop(callback:Function): void
 }
 
-// copy/pasta from https://ipfs.github.io/js-ipfs-block-service
-// it has the following methods, I've only added the methods necessary
-// for this SDK into the interface
-// setExchange
-// unsetExchange
-// hasExchange
-// put
-// putMany
-// get
-// getMany
-// delete
-
 /**
  * The interface to a js-ipfs block-service. See: {@link https://ipfs.github.io/js-ipfs-block-service}
  * @public
  */
 export interface IBlockService {
   put(block:IBlock):Promise<any>
+  putMany(block:IBlock):Promise<any>
   get(cid:CID):Promise<IBlock>
+  getMany(cids:CID[]):Promise<IBlock[]>
   delete(cid:CID):Promise<any>
   setExchange(bitswap:IBitSwap):void
   unsetExchange():void

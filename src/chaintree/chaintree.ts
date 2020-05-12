@@ -1,25 +1,44 @@
-import { Dag, IBlockService, IBlock, IBitSwap } from './dag/dag'
+import { Dag, IBlockService, IBlock } from './dag/dag'
 import CID from 'cids'
 import { SetDataPayload, Transaction, SetOwnershipPayload } from 'tupelo-messages/transactions/transactions_pb';
-import {EcdsaKey} from '../ecdsa'
+import { EcdsaKey } from '../ecdsa'
+import { AddBlockRequest } from 'tupelo-messages/services/services_pb';
+import { Signature, PublicKey, Ownership } from 'tupelo-messages/signatures/signatures_pb';
 
 const dagCBOR = require('ipld-dag-cbor');
 const Block = require('ipld-block');
+
+interface TreeBlock {
+    height: number
+    previousTip?: CID
+    transactions: Transaction.AsObject[] // list of Transaction with .toObject called
+}
+
+type SignatureMap = {[key:string]:Signature.AsObject}
+
+interface StandardHeaders {
+    signatures: SignatureMap, // Object here is protobuf Signature toObject
+}
+
+interface BlockWithHeaders extends TreeBlock {
+    previousBlock?: CID
+    headers: StandardHeaders
+}
 
 /**
  * The options to create a new ChainTree.
  * @public
  */
 export interface IChainTreeInitializer {
-    key?:EcdsaKey
-    tip:CID,
-    store:IBlockService,
+    key?: EcdsaKey
+    tip: CID,
+    store: IBlockService,
 }
 
-async function objToBlock(obj:any):Promise<IBlock> {
+async function objToBlock(obj: any): Promise<IBlock> {
     const bits = dagCBOR.util.serialize(obj)
     const cid = await dagCBOR.util.cid(bits)
-    return new Block(bits,cid)
+    return new Block(bits, cid)
 }
 
 /**
@@ -41,7 +60,6 @@ export class ChainTree extends Dag {
     static newEmptyTree = async (store: IBlockService, key: EcdsaKey) => {
         const emptyBlock = await objToBlock({})
 
-
         const root = {
             chain: emptyBlock.cid,
             tree: emptyBlock.cid,
@@ -53,8 +71,8 @@ export class ChainTree extends Dag {
         await store.put(rootBlock)
 
         return new ChainTree({
-            key: key, 
-            tip: rootBlock.cid, 
+            key: key,
+            tip: rootBlock.cid,
             store: store,
         })
     }
@@ -64,7 +82,7 @@ export class ChainTree extends Dag {
      * @param opts - {@link IChainTreeInitializer}
      * @public
      */
-    constructor(opts:IChainTreeInitializer) {
+    constructor(opts: IChainTreeInitializer) {
         super(opts.tip, opts.store)
         this.key = opts.key
         this.store = opts.store
@@ -76,7 +94,7 @@ export class ChainTree extends Dag {
      * in setData)
      * @param path - the path (starting after /tree/data) you want to resolve
      */
-    async resolveData(path:string) {
+    async resolveData(path: string) {
         return this.resolve("/tree/data/" + path)
     }
 
@@ -88,6 +106,71 @@ export class ChainTree extends Dag {
         const resolveResp = await this.resolve("id")
         return resolveResp.value as string | null
     }
+
+    async newAddBlockRequest(trans: Transaction[]):Promise<AddBlockRequest> {
+        if (!this.key) {
+            throw new Error("needa key to create an AddBlockRequest")
+        }
+
+        let abr = new AddBlockRequest()
+        abr.setPreviousTip(this.tip.buffer)
+
+        let transObjects = trans.map((tx) => {
+            let txObj = tx.toObject()
+            switch (tx.getType()) {
+                case Transaction.Type["SETDATA"]:
+                    txObj.setDataPayload!.value = Buffer.from(txObj.setDataPayload!.value as string, 'base64')
+                    break;
+                default:
+                    throw new Error("only supporting set data for now")
+            }
+            Object.keys(txObj).forEach((key)=> {
+                if (Reflect.get(txObj, key) === undefined) {
+                    Reflect.set(txObj, key, null)
+                }
+            })
+            return txObj
+        })
+
+        let block:TreeBlock = {
+            height: 0, //TODO: get height from tree
+            transactions: transObjects,
+        }
+
+        // const bits = dagCBOR.util.serialize(block)
+        // //         console.log("serialized: ", bits.toString('hex'))
+        // const digest = (await dagCBOR.util.cid(bits)).multihash.slice(2)
+
+        let sigResp = await this.key?.signObject(block)!
+
+        const pubKey = new PublicKey()
+        pubKey.setType(PublicKey.Type['KEYTYPESECP256K1'])
+        const ownership = new Ownership()
+        ownership.setPublicKey(pubKey)
+
+        const sigProto = new Signature()
+        sigProto.setOwnership(ownership)
+
+        let sigMap:SignatureMap = {}
+        let sigProtoObj = sigProto.toObject()
+        delete sigProtoObj.signersList
+
+        sigProtoObj.signature = sigResp.signature
+        sigProtoObj.ownership?.publicKey!.publicKey! = Buffer.from('')
+
+        sigMap[this.key.address()] = sigProtoObj
+        let blockWithHeaders:BlockWithHeaders = Object.assign(block, {
+            headers: {
+                signatures: sigMap,
+            }
+        })
+
+        abr.setPayload(Buffer.from(dagCBOR.util.serialize(blockWithHeaders)))
+        abr.setObjectId(Buffer.from(this.key.toDid(), 'utf-8'))
+        abr.setHeight(0) // TODO: use height from tree
+        return abr
+    }
+
 }
 
 const setOwnershipPayload = (newOwnerKeys: string[]) => {

@@ -2,8 +2,9 @@ import { expect } from 'chai';
 import 'mocha';
 
 import { EcdsaKey } from '../ecdsa'
-import ChainTree from './chaintree'
+import ChainTree, { setDataTransaction } from './chaintree'
 import Repo from '../repo/repo';
+import { AddBlockRequest } from 'tupelo-messages/services/services_pb';
 
 const IpfsBlockService: any = require('ipfs-block-service');
 const MemoryDatastore: any = require('interface-datastore').MemoryDatastore;
@@ -33,7 +34,7 @@ describe('ChainTree', () => {
   })
 
   it('should generate a new empty ChainTree with nodes set', async () => {
-    const key = await EcdsaKey.generate()
+    const key = EcdsaKey.generate()
 
     const tree = await ChainTree.newEmptyTree(new IpfsBlockService(repo.repo), key)
     expect(tree).to.exist
@@ -43,11 +44,19 @@ describe('ChainTree', () => {
   })
 
   it('resolves data', async () => {
-    const key = await EcdsaKey.generate()
+    const key = EcdsaKey.generate()
     const tree = await ChainTree.newEmptyTree(new IpfsBlockService(repo.repo), key)
     expect(tree).to.exist
 
     const resp = await tree.resolve("/")
     expect(resp.value.id).to.equal(key.toDid())
   })
+
+  it('creates an AddBlockRequest', async() => {
+    const key = EcdsaKey.generate()
+    const tree = await ChainTree.newEmptyTree(new IpfsBlockService(repo.repo), key)
+    const abr = await tree.newAddBlockRequest([setDataTransaction("hi", "hi")])
+    expect(abr).to.be.instanceOf(AddBlockRequest)
+  })
+
 })

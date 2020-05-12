@@ -1,5 +1,12 @@
-import { Signature } from 'tupelo-messages/signatures/signatures_pb'
-import {randomBytes, SigningKey, computeAddress } from 'ethers/utils'
+import { randomBytes, SigningKey, computeAddress,joinSignature } from 'ethers/utils'
+
+const dagCBOR = require('ipld-dag-cbor')
+
+export interface ISignResponse {
+    digest: Buffer
+    signature: Buffer
+}
+
 /**
  * EcdsaKey defines the public/private key-pairs used to interact with Tupelo.
  * It also supportes generating new keys either randomly or through a passphrase.
@@ -12,7 +19,7 @@ export class EcdsaKey {
      * Generate a new keypair with random bits.
      * @public
      */
-    static generate = async ()=> {
+    static generate = () => {
         const privateKey = randomBytes(32)
         const signingKey = new SigningKey(privateKey)
         const key = new EcdsaKey(Buffer.from(signingKey.publicKey.slice(2), 'hex'), privateKey)
@@ -27,7 +34,7 @@ export class EcdsaKey {
     //     return new EcdsaKey(pair[1], pair[0]) 
     // }
 
-    static fromBytes = async (bytes:Uint8Array) => {
+    static fromBytes = async (bytes: Uint8Array) => {
         const signingKey = new SigningKey(bytes)
         return new EcdsaKey(Buffer.from(signingKey.publicKey.slice(2), 'hex'), bytes)
     }
@@ -52,5 +59,26 @@ export class EcdsaKey {
     toDid() {
         return `did:tupelo:${this.address()}`
     }
-    
+
+    async signObject(obj: any): Promise<ISignResponse> {
+        const signingKey = new SigningKey(this.privateKey!)
+        const bits = dagCBOR.util.serialize(obj)
+        const digest = (await dagCBOR.util.cid(bits)).multihash.slice(2)
+        let signature = signingKey.signDigest(digest);
+
+        // this is weird, but for some reason Go and JS differ in how they handle the last byte of the signature
+        // if the V of the js signature is 27 we need to slice off the last byte and append 00 but if it's 28
+        // we need a 01
+        // also strip off the 0x at the begin of hex
+        let joined = joinSignature(signature).slice(2)
+        if (signature.v === 27) {
+            joined = joined.slice(0, -2) + "00"
+        } else {
+            joined = joined.slice(0, -2) + "01"
+        }
+        return {
+            digest: digest,
+            signature: Buffer.from(joined, 'hex'),
+        }
+    }
 }
