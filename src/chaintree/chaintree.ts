@@ -107,6 +107,10 @@ export class ChainTree extends Dag {
         return resolveResp.value as string | null
     }
 
+    /**
+     * 
+     * @param trans - an array of Transactions to put into the ABR
+     */
     async newAddBlockRequest(trans: Transaction[]):Promise<AddBlockRequest> {
         if (!this.key) {
             throw new Error("needa key to create an AddBlockRequest")
@@ -136,10 +140,6 @@ export class ChainTree extends Dag {
             height: 0, //TODO: get height from tree
             transactions: transObjects,
         }
-
-        // const bits = dagCBOR.util.serialize(block)
-        // //         console.log("serialized: ", bits.toString('hex'))
-        // const digest = (await dagCBOR.util.cid(bits)).multihash.slice(2)
 
         let sigResp = await this.key?.signObject(block)!
 
