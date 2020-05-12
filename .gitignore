@@ -1,0 +1,9 @@
+*.wasm
+node_modules
+lib/
+.tmp
+go.mod
+dist/
+temp/
+.cache
+builddocker/.gopath

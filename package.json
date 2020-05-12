@@ -1,0 +1,32 @@
+{
+  "name": "simple-chain",
+  "version": "0.0.1",
+  "description": "Immutable data store with digital signatures",
+  "main": "index.js",
+  "scripts": {
+    "build": "./build.sh",
+    "build:wasm": "scripts/build-wasm.sh",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@types/debug": "^4.1.5",
+    "debug": "^4.1.1",
+    "detect-node": "^2.0.4",
+    "google-protobuf": "^3.12.0-rc.1",
+    "ipfs-repo": "^2.1.1",
+    "ipld-dag-cbor": "^0.15.2",
+    "tupelo-messages": "^2.2.1"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.2.11",
+    "@types/mocha": "^7.0.2",
+    "@types/node": "^13.13.5",
+    "chai": "^4.2.0",
+    "ethers": "^4.0.47",
+    "mocha": "^7.1.2",
+    "ts-node": "^8.10.1",
+    "typescript": "^3.8.3"
+  }
+}
