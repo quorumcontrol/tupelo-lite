@@ -1,7 +1,7 @@
 import debug from 'debug'
 import path from 'path'
 import { NotaryGroup, AddBlockRequest } from 'tupelo-messages'
-const Go = require('./js/go')
+const Go = require('../js/go')
 
 const log = debug("aggregator.wasm")
 
@@ -23,7 +23,7 @@ class UnderlyingWasm {
     }
 }
 
-const wasmPath = path.join(__dirname, "js", "go", "tupelo.wasm")
+const wasmPath = path.join(__dirname, "..", "js", "go", "tupelo.wasm")
 
 namespace ValidatorWasm {
     let _validatorWasm: Promise<UnderlyingWasm> | undefined;
