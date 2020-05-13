@@ -50,7 +50,6 @@ const runner = {
             go.readyResolver = resolve;
         });
 
-        console.log("setting ready")
         go.ready = function() {
             return go.readyPromise
         }
@@ -74,7 +73,7 @@ const runner = {
         } else {
             log("is not nodejs")
             if (typeof WebAssembly.instantiateStreaming == 'function') {
-                console.log("wasm path: ", path)
+                log("wasm path: ", path)
                 result = await WebAssembly.instantiateStreaming(fetch(path), go.importObject)
             } else {
                 log('fetching wasm')

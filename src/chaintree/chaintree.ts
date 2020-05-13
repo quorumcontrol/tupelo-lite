@@ -67,7 +67,6 @@ export class ChainTree extends Dag {
         }
 
         const rootBlock = await objToBlock(root)
-        console.log(rootBlock)
         await store.put(rootBlock)
 
         return new ChainTree({

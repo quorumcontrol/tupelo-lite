@@ -3,6 +3,7 @@ import 'mocha';
 
 import Repo from '../../repo/repo';
 import { Dag } from './dag';
+import CID from 'cids';
 
 const IpfsBlockService:any = require('ipfs-block-service');
 const MemoryDatastore:any = require('interface-datastore').MemoryDatastore;
@@ -26,43 +27,78 @@ const testRepo = async () => {
     return repo
 }
 
+interface ICascadedNode {
+  someData:string
+  previous?: CID
+}
+
+interface ICascadedResponse {
+  nodes: ICascadedNode[]
+  cids: CID[]
+}
+
+function generateCascadinNodes(count:number):Promise<ICascadedResponse> {
+  return new Promise<ICascadedResponse>(async (resolve)=> {
+    let objs:ICascadedNode[] = [{
+      someData: `I am 0`
+    }]
+    let ids:CID[] = []
+    for(let i = 1; i < count; i++) {
+      const serialized = dagCBOR.util.serialize(objs[i-1])
+      const cid = await dagCBOR.util.cid(serialized)
+      ids[i-1] = cid
+      objs[i] = {
+        someData: `I am ${i}`,
+        previous: cid,
+      }
+    }
+    const serialized = dagCBOR.util.serialize(objs[count-1])
+    const cid = await dagCBOR.util.cid(serialized)
+    ids[count-1] = cid
+    resolve({
+      nodes: objs,
+      cids: ids,
+    })
+  }) 
+}
+
 describe('Dag', ()=> {
     let repo:Repo
+    let dagStore:any // IpfsBlockService
+    let ipldResolver:any // Ipld instance
 
     before(async ()=> {
       repo = await testRepo()
+      dagStore = new IpfsBlockService(repo.repo)
+      ipldResolver = new Ipld({blockService: dagStore})
+    })
+
+    it('returns a resolver', async ()=> {
+      const cascadedResponse = await generateCascadinNodes(3)
+
+      const result = ipldResolver.putMany(cascadedResponse.nodes, multicodec.DAG_CBOR)
+      let [respCid1, respCid2, respCid3] = await result.all()
+      expect(cascadedResponse.cids).to.eql([respCid1, respCid2, respCid3])
+
+      const d = new Dag(cascadedResponse.cids[2], dagStore)
+      const resp = await d.resolve("previous/previous/someData", {touchedBlocks: true})
+      expect(resp.touchedBlocks).to.have.lengthOf(3)
+
+
+      const ipldIterator = ipldResolver.resolve(cascadedResponse.cids[2], "previous/previous/someData")
+      // the iterator can get all the nodes
+      console.log("iterator: ", await ipldIterator.first())
     })
 
     it('resolves through different nodes', async ()=> {
-        const dagStore = new IpfsBlockService(repo.repo)
-        const ipldResolver = new Ipld({blockService: dagStore})
+        const cascadedResponse = await generateCascadinNodes(3)
 
-        const node1 = { someData: 'I am 1' }
-        const serialized1 = dagCBOR.util.serialize(node1)
-        const cid1 = await dagCBOR.util.cid(serialized1)
-        const node2 = {
-          someData: 'I am 2',
-          one: cid1
-        }
-  
-        const serialized2 = dagCBOR.util.serialize(node2)
-        const cid2 = await dagCBOR.util.cid(serialized2)
-        const node3 = {
-          someData: 'I am 3',
-          one: cid1,
-          two: cid2
-        }
-  
-        const serialized3 = dagCBOR.util.serialize(node3)
-        const cid3 = await dagCBOR.util.cid(serialized3)
-  
-        const nodes = [node1, node2, node3]
-        const result = ipldResolver.putMany(nodes, multicodec.DAG_CBOR)
+        const result = ipldResolver.putMany(cascadedResponse.nodes, multicodec.DAG_CBOR)
         let [respCid1, respCid2, respCid3] = await result.all()
-        expect([cid1,cid2,cid3]).to.eql([respCid1, respCid2, respCid3])
+        expect(cascadedResponse.cids).to.eql([respCid1, respCid2, respCid3])
 
-        const d = new Dag(cid3, dagStore)
-        const resp = await d.resolve("two/one/someData")
-        expect(resp.value).to.equal("I am 1")
+        const d = new Dag(cascadedResponse.cids[2], dagStore)
+        const resp = await d.resolve("previous/previous/someData")
+        expect(resp.value).to.equal("I am 0")
     })
 })

@@ -16,10 +16,10 @@ export interface IBlock {
  * @public
  */
 export interface IBitSwap {
-  get(cid: CID, callback:Function): void
-  put(block: IBlock, callback:Function): void
-  start(callback:Function): void
-  stop(callback:Function): void
+  get(cid: CID, callback: Function): void
+  put(block: IBlock, callback: Function): void
+  start(callback: Function): void
+  stop(callback: Function): void
 }
 
 /**
@@ -27,14 +27,14 @@ export interface IBitSwap {
  * @public
  */
 export interface IBlockService {
-  put(block:IBlock):Promise<any>
-  putMany(block:IBlock):Promise<any>
-  get(cid:CID):Promise<IBlock>
-  getMany(cids:CID[]):Promise<IBlock[]>
-  delete(cid:CID):Promise<any>
-  setExchange(bitswap:IBitSwap):void
-  unsetExchange():void
-  hasExchange():boolean
+  put(block: IBlock): Promise<any>
+  putMany(block: IBlock): Promise<any>
+  get(cid: CID): Promise<IBlock>
+  getMany(cids: CID[]): Promise<IBlock[]>
+  delete(cid: CID): Promise<any>
+  setExchange(bitswap: IBitSwap): void
+  unsetExchange(): void
+  hasExchange(): boolean
 }
 
 interface IDagStoreResolveResponse {
@@ -42,10 +42,10 @@ interface IDagStoreResolveResponse {
   value: any
 }
 
-interface IExtendedDagStoreIterator {
-  first():Promise<IDagStoreResolveResponse>
-  last():Promise<IDagStoreResolveResponse>
-  all():Promise<IDagStoreResolveResponse[]>
+interface IExtendedDagStoreIterator extends AsyncIterator<IDagStoreResolveResponse> {
+  first(): Promise<IDagStoreResolveResponse>
+  last(): Promise<IDagStoreResolveResponse>
+  all(): Promise<IDagStoreResolveResponse[]>
 }
 
 /**
@@ -64,6 +64,11 @@ export interface IDagStore {
 export interface IResolveResponse {
   remainderPath: string[]
   value: any
+  touchedBlocks?: CID[]
+}
+
+export interface IResolveOptions {
+  touchedBlocks?:boolean
 }
 
 /**
@@ -77,7 +82,7 @@ export class Dag {
 
   constructor(tip: CID, store: IBlockService) {
     this.tip = tip;
-    this.dagStore = new Ipld({blockService: store});
+    this.dagStore = new Ipld({ blockService: store });
   }
 
   /**
@@ -94,8 +99,8 @@ export class Dag {
    * @param path - a path to the desired node/key in the DAG (eg /path/to/data). Array form (eg ['path', 'to', 'data']) is deprecated
    * @public
    */
-  async resolve(path: Array<string>|string):Promise<IResolveResponse> {
-    return this.resolveAt(this.tip, path)
+  async resolve(path: Array<string> | string, opts?:IResolveOptions): Promise<IResolveResponse> {
+    return this.resolveAt(this.tip, path, opts)
   }
 
   /**
@@ -104,42 +109,55 @@ export class Dag {
    * @param path - the path to find the value. Array form is deprecated, use string form (eg /path/to/data) instead
    * @public
    */
-  async resolveAt(tip: CID, path: Array<string>|string):Promise<IResolveResponse> {
-    let strPath:string
+  async resolveAt(tip: CID, path: Array<string> | string, opts?:IResolveOptions): Promise<IResolveResponse> {
+    let strPath: string
     if (isArray(path)) {
       console.warn('passing in arrays to resolve is deprecated, use the string form (eg /path/to/data) instead')
-      strPath  = path.join("/")
+      strPath = path.join("/")
     } else {
       strPath = path
     }
-    const resolved = this.dagStore.resolve(tip, strPath)
+    const resolved: IExtendedDagStoreIterator = this.dagStore.resolve(tip, strPath)
     let lastVal
+    let touched:CID[] = [tip]
     try {
-      lastVal = await resolved.last()
+
+      if (opts?.touchedBlocks) {
+        const allVals = await resolved.all()
+        allVals.forEach((resp:IDagStoreResolveResponse)=> {
+          if (CID.isCID(resp.value)) {
+            touched.push(resp.value)
+          }
+        })
+        lastVal = allVals[allVals.length - 1]
+      } else {
+        lastVal = await resolved.last()
+      }
+
     } catch (err) {
-      const e:Error = err;
-    
+      const e: Error = err;
+
       if (!e.message.startsWith("Object has no property")) {
         throw err
       }
     }
     // nothing was resolvable, return full path as the remainder
     if (typeof lastVal === 'undefined') {
-      return {remainderPath: strPath.split('/'), value: null}
+      return { remainderPath: strPath.split('/'), value: null, touchedBlocks: touched }
     }
-  
+
     // if remainderPath is not empty, then the value was not found and an
     // error was thrown on the second iteration above - use the remainderPath
     // from the first iteration, but return nil for the error
     if (lastVal.remainderPath != '') {
-      return { remainderPath: lastVal.remainderPath.split('/'), value: null }
+      return { remainderPath: lastVal.remainderPath.split('/'), value: null, touchedBlocks: touched }
     }
 
-    return { remainderPath: [], value: lastVal.value }
+    return { remainderPath: [], value: lastVal.value, touchedBlocks: touched }
   }
 }
 
 
-function isArray(path: Array<string>|string): path is Array<string> {
+function isArray(path: Array<string> | string): path is Array<string> {
   return (path as Array<string>).join !== undefined;
 }
