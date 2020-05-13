@@ -1,6 +1,6 @@
 import 'mocha'
 import {expect} from 'chai'
-import {SimpleChain} from './simpleChain'
+import {SimpleChain, bytesToBlocks} from './simpleChain'
 import {Repo} from '../repo/repo'
 import { EcdsaKey } from '../ecdsa';
 import ChainTree, { setDataTransaction } from '../chaintree/chaintree';
@@ -57,10 +57,39 @@ describe("SimpleChain", ()=> {
         const tree = await ChainTree.newEmptyTree(new IpfsBlockService(repo.repo), key)
         const abr = await tree.newAddBlockRequest([setDataTransaction("hi", "hi")])
         const resp = await chain.add(abr)
+
         expect(resp.valid).to.be.true
 
         const resolveResp = await chain.resolve(key.toDid(), "/tree/data/hi")
         expect(resolveResp.value).to.equal("hi")
+        repo.close()
+    })
+
+    it('builds off of existing chaintrees', async ()=> {
+        let repo = await testRepo("buildsOnExisting")
+        let chain = new SimpleChain(repo)
+
+        const key = EcdsaKey.generate()
+        const tree = await ChainTree.newEmptyTree(new IpfsBlockService(repo.repo), key)
+        const abr = await tree.newAddBlockRequest([setDataTransaction("hi", "hi")])
+        const resp = await chain.add(abr)
+        expect(resp.valid).to.be.true
+
+        const newBlocks = await bytesToBlocks(resp.newNodes)
+        await tree.store.putMany(newBlocks)
+        tree.tip = resp.newTip
+
+        const resolveResp = await tree.resolveData("hi")
+        expect(resolveResp.value).to.equal("hi")
+
+        // now lets build *another* ABR
+        const abr2 = await tree.newAddBlockRequest([setDataTransaction("hi", "bye")])
+        const resp2 = await chain.add(abr2)
+        expect(resp2.valid).to.be.true
+        const resolveResp2 = await chain.resolve(key.toDid(), "/tree/data/hi")
+        expect(resolveResp2.value).to.equal("bye")
+
+
         repo.close()
     })
 

@@ -73,7 +73,7 @@ describe('Dag', ()=> {
       ipldResolver = new Ipld({blockService: dagStore})
     })
 
-    it('returns a resolver', async ()=> {
+    it('optionally returns touched blocks', async ()=> {
       const cascadedResponse = await generateCascadinNodes(3)
 
       const result = ipldResolver.putMany(cascadedResponse.nodes, multicodec.DAG_CBOR)
@@ -83,11 +83,6 @@ describe('Dag', ()=> {
       const d = new Dag(cascadedResponse.cids[2], dagStore)
       const resp = await d.resolve("previous/previous/someData", {touchedBlocks: true})
       expect(resp.touchedBlocks).to.have.lengthOf(3)
-
-
-      const ipldIterator = ipldResolver.resolve(cascadedResponse.cids[2], "previous/previous/someData")
-      // the iterator can get all the nodes
-      console.log("iterator: ", await ipldIterator.first())
     })
 
     it('resolves through different nodes', async ()=> {

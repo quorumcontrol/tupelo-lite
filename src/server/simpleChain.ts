@@ -21,7 +21,7 @@ function didToKey(did: string): IKey {
     return new Key(`/trees/${did}`)
 }
 
-function bytesToBlocks(bufs: Uint8Array[]): Promise<IBlock[]> {
+export function bytesToBlocks(bufs: Uint8Array[]): Promise<IBlock[]> {
     return Promise.all(bufs.map(async (nodeBuf) => {
         const cid = await dagCBOR.util.cid(nodeBuf)
         const block = new Block(nodeBuf, cid)
