@@ -52,6 +52,11 @@ export class ChainTree extends Dag {
     key?: EcdsaKey
     store: IBlockService
 
+    static createRandom = async (store:IBlockService) => {
+        const key = EcdsaKey.generate()
+        return ChainTree.newEmptyTree(store, key)
+    }
+
     /**
      * Creates a new empty chaintree using the specified key and blockservice.
      * @param store - The {@link IBlockService} to store the new blocks in (Community exports a block service)
