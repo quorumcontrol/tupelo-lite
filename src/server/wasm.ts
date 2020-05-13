@@ -8,11 +8,11 @@ const dagCBOR = require('ipld-dag-cbor')
 const log = debug("aggregator.wasm")
 
 
-interface IValidatorOptions {
+export interface IValidatorOptions {
     notaryGroup: Uint8Array // protobuf encoded config.NotaryGroup
 }
 
-interface IValidationResponse {
+export interface IValidationResponse {
     newTip: CID
     newNodes: Buffer[]
     valid: boolean
