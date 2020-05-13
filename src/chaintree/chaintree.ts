@@ -11,6 +11,7 @@ const Block = require('ipld-block');
 interface TreeBlock {
     height: number
     previousTip?: CID
+    previousBlock?: CID
     transactions: Transaction.AsObject[] // list of Transaction with .toObject called
 }
 
@@ -141,6 +142,10 @@ export class ChainTree extends Dag {
         let block:TreeBlock = {
             height: nextHeight,
             transactions: transObjects,
+        }
+        if (nextHeight > 0) {
+            block.previousTip = this.tip
+            block.previousBlock = (await this.resolve("chain")).value.end
         }
 
         let sigResp = await this.key?.signObject(block)!
