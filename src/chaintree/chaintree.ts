@@ -35,7 +35,7 @@ export interface IChainTreeInitializer {
     store: IBlockService,
 }
 
-export async function objToBlock(obj: any): Promise<IBlock> {
+async function objToBlock(obj: any): Promise<IBlock> {
     const bits = dagCBOR.util.serialize(obj)
     const cid = await dagCBOR.util.cid(bits)
     return new Block(bits, cid)
@@ -67,7 +67,7 @@ export class ChainTree extends Dag {
         }
 
         const rootBlock = await objToBlock(root)
-        await store.put(rootBlock)
+        await store.putMany([rootBlock, emptyBlock])
 
         return new ChainTree({
             key: key,
@@ -115,6 +115,9 @@ export class ChainTree extends Dag {
             throw new Error("needa key to create an AddBlockRequest")
         }
 
+        const previousBlock:TreeBlock = (await this.resolve("/chain/end")).value || {}
+        const nextHeight = (previousBlock.height || -1) + 1 // get zero if null otherwise next height
+
         let abr = new AddBlockRequest()
         abr.setPreviousTip(this.tip.buffer)
 
@@ -136,7 +139,7 @@ export class ChainTree extends Dag {
         })
 
         let block:TreeBlock = {
-            height: 0, //TODO: get height from tree
+            height: nextHeight,
             transactions: transObjects,
         }
 
@@ -166,7 +169,7 @@ export class ChainTree extends Dag {
 
         abr.setPayload(Buffer.from(dagCBOR.util.serialize(blockWithHeaders)))
         abr.setObjectId(Buffer.from(this.key.toDid(), 'utf-8'))
-        abr.setHeight(0) // TODO: use height from tree
+        abr.setHeight(nextHeight)
         return abr
     }
 

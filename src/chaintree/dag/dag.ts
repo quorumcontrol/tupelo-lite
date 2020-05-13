@@ -28,7 +28,7 @@ export interface IBitSwap {
  */
 export interface IBlockService {
   put(block: IBlock): Promise<any>
-  putMany(block: IBlock): Promise<any>
+  putMany(block: IBlock[]): Promise<any>
   get(cid: CID): Promise<IBlock>
   getMany(cids: CID[]): Promise<IBlock[]>
   delete(cid: CID): Promise<any>
