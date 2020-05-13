@@ -14,7 +14,7 @@ export interface IValidatorOptions {
 
 export interface IValidationResponse {
     newTip: CID
-    newNodes: Buffer[]
+    newNodes: Uint8Array[]
     valid: boolean
 }
 

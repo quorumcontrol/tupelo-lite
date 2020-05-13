@@ -35,7 +35,7 @@ export interface IChainTreeInitializer {
     store: IBlockService,
 }
 
-async function objToBlock(obj: any): Promise<IBlock> {
+export async function objToBlock(obj: any): Promise<IBlock> {
     const bits = dagCBOR.util.serialize(obj)
     const cid = await dagCBOR.util.cid(bits)
     return new Block(bits, cid)
