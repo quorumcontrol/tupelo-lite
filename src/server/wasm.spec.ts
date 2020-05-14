@@ -26,6 +26,8 @@ const testRepo = async () => {
     return repo
 }
 
+const nullGetter = (did:string)=>Promise.resolve(undefined)
+
 describe('Aggregator Wasm', () => {
 
     let repo: Repo
@@ -35,9 +37,9 @@ describe('Aggregator Wasm', () => {
     })
 
     before(async () => {
-        let ng = new NotaryGroup()
-        ng.setId("tester")
-        await Aggregator.setupValidator(ng)
+        let notaryGroup = new NotaryGroup()
+        notaryGroup.setId("tester")
+        await Aggregator.setupValidator({notaryGroup, tipGetter: nullGetter})
     })
 
     it('getsPubFromSig', async () => {

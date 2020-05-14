@@ -23,9 +23,14 @@ export const resolvers = {
     JSON: GraphQLJSON,
     Query: {
       resolve: async (_:any, {input}:QueryResolveArgs, {dataSources:{simpleChain}}:ITupeloContext):Promise<ResolvePayload> => {
-        console.log("input: ", input)
         const chain = await simpleChain.chain()
-        return chain.resolve(input.did, input.path)
+        const resp = await chain.resolve(input.did, input.path)
+        if (resp) {
+            return resp
+        }
+        return {
+            remainingPath: input.path.split("/")
+        }
       }
     },
     Mutation: {

@@ -34,18 +34,13 @@ describe("SimpleChain", ()=> {
         const tree = await ChainTree.newEmptyTree(new IpfsBlockService(repo.repo), key)
         const abr = await tree.newAddBlockRequest([setDataTransaction("hi", "hi")])
 
-        try {
-            await chain.getTip(key.toDid())
-            // should never get here
-            expect(true).to.be.false
-        } catch(e) {
-            expect(e.code).to.equal("ERR_NOT_FOUND")
-        }
+        let expectedUndefinedTip = await chain.getTip(key.toDid())
+        expect(expectedUndefinedTip).to.be.undefined
 
         const resp = await chain.add(abr)
         expect(resp.valid).to.be.true
 
-        expect(await chain.getTip(key.toDid())).to.equal(resp.newTip.buffer)
+        expect((await chain.getTip(key.toDid()))!.equals(resp.newTip)).to.be.true
         repo.close()
     })
 
@@ -61,7 +56,7 @@ describe("SimpleChain", ()=> {
         expect(resp.valid).to.be.true
 
         const resolveResp = await chain.resolve(key.toDid(), "/tree/data/hi")
-        expect(resolveResp.value).to.equal("hi")
+        expect(resolveResp!.value).to.equal("hi")
         repo.close()
     })
 
@@ -80,14 +75,14 @@ describe("SimpleChain", ()=> {
         tree.tip = resp.newTip
 
         const resolveResp = await tree.resolveData("hi")
-        expect(resolveResp.value).to.equal("hi")
+        expect(resolveResp!.value).to.equal("hi")
 
         // now lets build *another* ABR
         const abr2 = await tree.newAddBlockRequest([setDataTransaction("hi", "bye")])
         const resp2 = await chain.add(abr2)
         expect(resp2.valid).to.be.true
         const resolveResp2 = await chain.resolve(key.toDid(), "/tree/data/hi")
-        expect(resolveResp2.value).to.equal("bye")
+        expect(resolveResp2!.value).to.equal("bye")
 
 
         repo.close()

@@ -7,9 +7,34 @@ const dagCBOR = require('ipld-dag-cbor')
 
 const log = debug("aggregator.wasm")
 
+type TipGetter = (did:string)=>Promise<CID|undefined> 
+type WasmTipGetter = (did:string)=>Promise<Uint8Array|undefined> // where the returned is bytes of the CID
 
+function tipGetterToWasmTipGetter(getter:TipGetter) {
+    return async (did:string)=>{
+        const cid = await getter(did)
+        if (cid) {
+            return cid.buffer
+        }
+        return undefined
+    }
+}
+
+/**
+ * IValidatorOptions are the user-facing options for initializing the validator
+ * 
+ */
 export interface IValidatorOptions {
-    notaryGroup: Uint8Array // protobuf encoded config.NotaryGroup
+    notaryGroup: NotaryGroup // protobuf encoded config.NotaryGroup
+    tipGetter: TipGetter
+}
+
+/*
+These are the internal options passed to the wasm interface
+*/
+interface WasmValidatorOptions {
+    notaryGroup: Uint8Array
+    tipGetter: WasmTipGetter
 }
 
 export interface IValidationResponse {
@@ -19,7 +44,7 @@ export interface IValidationResponse {
 }
 
 class UnderlyingWasm {
-    async setupValidator(opts: IValidatorOptions): Promise<void> {
+    async setupValidator(opts: WasmValidatorOptions): Promise<void> {
          return
     }
     async validate(abr:Uint8Array): Promise<Uint8Array> {
@@ -56,9 +81,12 @@ namespace ValidatorWasm {
 }
 
 export namespace Aggregator {
-    export async function setupValidator(group:NotaryGroup) {
+    export async function setupValidator({notaryGroup,tipGetter}:IValidatorOptions) {
         const vw = await ValidatorWasm.get()
-        return vw.setupValidator({notaryGroup: group.serializeBinary()})
+        return vw.setupValidator({
+            notaryGroup: notaryGroup.serializeBinary(),
+            tipGetter: tipGetterToWasmTipGetter(tipGetter),
+        })
     }
 
     export async function validate(abr:AddBlockRequest):Promise<IValidationResponse> {

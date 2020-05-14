@@ -37,24 +37,32 @@ export class SimpleChain {
             ng = new NotaryGroup()
             ng.setId("default")
         }
-        Aggregator.setupValidator(ng)
+        Aggregator.setupValidator({
+            notaryGroup: ng,
+            tipGetter: this.getTip.bind(this)
+        })
         this.repo = repo
     }
 
-    getTip(did: string) {
-        return this.repo.get(didToKey(did))
+    async getTip(did: string): Promise<CID | undefined> {
+        try {
+            const cidBits = await this.repo.get(didToKey(did))
+            return new CID(cidBits)
+        } catch (err) {
+            if (err.code !== ErrNotFound) {
+                throw err
+            }
+            return undefined
+        }
     }
 
     async resolve(did: string, path: string) {
-        let tip: CID
-        try {
-            const curr = await this.getTip(did)
-            tip = new CID(curr)
-            const dag = new Dag(tip, this.repo.repo.blocks)
-            return await dag.resolve(path) // TODO: send back the blocks too
-        } catch (err) {
-            throw err
+        const tip = await this.getTip(did)
+        if (!tip) {
+            return undefined
         }
+        const dag = new Dag(tip, this.repo.repo.blocks)
+        return await dag.resolve(path) // TODO: send back the blocks too
     }
 
     async add(abr: AddBlockRequest): Promise<IValidationResponse> {
@@ -63,17 +71,11 @@ export class SimpleChain {
             throw new Error(ErrNotValid)
         }
         const did = Buffer.from(abr.getObjectId_asU8()).toString('utf-8')
-        try {
-            const curr = await this.getTip(did)
-            const tip = new CID(curr)
-            if (!tip.buffer.equals(abr.getPreviousTip_asU8())) {
-                throw new Error(ErrWrongPreviousTip)
-            }
-        } catch (err) {
-            if (err.code !== ErrNotFound) {
-                throw err
-            }
+        const tip = await this.getTip(did)
+        if (tip && !tip.buffer.equals(abr.getPreviousTip_asU8())) {
+            throw new Error(ErrWrongPreviousTip)
         }
+
         await this.repo.put(didToKey(did), resp.newTip.buffer)
 
         // save the nodes from this to the repo
