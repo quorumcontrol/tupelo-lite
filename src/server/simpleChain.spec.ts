@@ -173,33 +173,41 @@ describe("SimpleChain", ()=> {
         expect(resolveResp.value).to.eql(true)
       })
   
-    //   it('grafts path-based ownership', async ()=> {
-    //     const c = await Community.getDefault()
+      it('grafts path-based ownership', async ()=> {
+        let repo = await testRepo('grafts path-based ownership')
+        let chain = new SimpleChain(repo)
+        const service = new IpfsBlockService(repo.repo)
   
-    //     const parentKey = await EcdsaKey.generate()
-    //     const parentTree = await ChainTree.newEmptyTree(c.blockservice, parentKey)
-    //     const parentTreeDid = await parentTree.id()
+        const parentKey = EcdsaKey.generate()
+        const parentTree = await ChainTree.newEmptyTree(service, parentKey)
+        const parentTreeDid = await parentTree.id()
   
-    //     const newParentKey = await EcdsaKey.generate()
+        const newParentKey = EcdsaKey.generate()
   
-    //     // need to make sure the parentTree exists with the signers
-    //     // also change the parent owner to make sure the child transactions are 
-    //     // actually looking at the path and not the original ownership.
-    //     await c.playTransactions(parentTree, [
-    //       setOwnershipTransaction([await newParentKey.address()]),
-    //       setDataTransaction("ownershipPath", (await parentKey.address()))
-    //     ])
+        // need to make sure the parentTree exists with the signers
+        // also change the parent owner to make sure the child transactions are 
+        // actually looking at the path and not the original ownership.
+        const abr = await parentTree.newAddBlockRequest([
+          setOwnershipTransaction([newParentKey.address()]),
+          setDataTransaction("ownershipPath", (parentKey.address()))
+        ])
+        let resp = await chain.add(abr)
+        await updateChainTreeWithResponse(parentTree, resp)
   
-    //     const childKey = await EcdsaKey.generate()
-    //     const childTree = await ChainTree.newEmptyTree(c.blockservice, childKey)
+        const childKey = EcdsaKey.generate()
+        const childTree = await ChainTree.newEmptyTree(service, childKey)
   
-    //     await c.playTransactions(childTree, [setOwnershipTransaction([`${parentTreeDid}/tree/data/ownershipPath`])])
+        const abr2 = await childTree.newAddBlockRequest([setOwnershipTransaction([`${parentTreeDid}/tree/data/ownershipPath`])])
+        resp = await chain.add(abr2)
+        await updateChainTreeWithResponse(childTree, resp)
+
+        childTree.key = parentKey
   
-    //     childTree.key = parentKey
-  
-    //     await c.playTransactions(childTree, [setDataTransaction("parentOwnsMe", true)])
-    //     const resp = childTree.resolveData("/parentOwnsMe")
-    //     expect((await resp).value).to.eql(true)
-    //   })
+        const abr3 = await childTree.newAddBlockRequest([setDataTransaction("parentOwnsMe", true)])
+        resp = await chain.add(abr3)
+        await updateChainTreeWithResponse(childTree, resp)
+
+        expect((await childTree.resolveData("/parentOwnsMe")).value).to.eql(true)
+      })
 
 })
