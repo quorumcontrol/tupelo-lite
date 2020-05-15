@@ -30,12 +30,12 @@ const chainP = new Promise<SimpleChain>(async (resolve) => {
     const chain = new SimpleChain(repo)
 
     // below here is just populating some dummy data useful for testing
-    const key = EcdsaKey.generate()
-    const tree = await ChainTree.newEmptyTree(new IpfsBlockService(repo.repo), key)
-    const abr = await tree.newAddBlockRequest([setDataTransaction("hi", "hi")])
-    const resp = await chain.add(abr)
-    console.log("dummy chain: ", key.toDid())
-    resolve(chain)
+    // const key = EcdsaKey.generate()
+    // const tree = await ChainTree.newEmptyTree(new IpfsBlockService(repo.repo), key)
+    // const abr = await tree.newAddBlockRequest([setDataTransaction("hi", "hi")])
+    // const resp = await chain.add(abr)
+    // console.log("dummy chain: ", key.toDid())
+    // resolve(chain)
 })
 
 export class ChainDataSource extends DataSource {

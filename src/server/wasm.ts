@@ -2,23 +2,13 @@ import debug from 'debug'
 import path from 'path'
 import { NotaryGroup, AddBlockRequest } from 'tupelo-messages'
 import CID from 'cids'
+import { IBlockService } from '../chaintree'
 const Go = require('../js/go')
 const dagCBOR = require('ipld-dag-cbor')
 
 const log = debug("aggregator.wasm")
 
 type TipGetter = (did:string)=>Promise<CID|undefined> 
-type WasmTipGetter = (did:string)=>Promise<Uint8Array|undefined> // where the returned is bytes of the CID
-
-function tipGetterToWasmTipGetter(getter:TipGetter) {
-    return async (did:string)=>{
-        const cid = await getter(did)
-        if (cid) {
-            return cid.buffer
-        }
-        return undefined
-    }
-}
 
 /**
  * IValidatorOptions are the user-facing options for initializing the validator
@@ -27,6 +17,7 @@ function tipGetterToWasmTipGetter(getter:TipGetter) {
 export interface IValidatorOptions {
     notaryGroup: NotaryGroup // protobuf encoded config.NotaryGroup
     tipGetter: TipGetter
+    store: IBlockService
 }
 
 /*
@@ -34,7 +25,8 @@ These are the internal options passed to the wasm interface
 */
 interface WasmValidatorOptions {
     notaryGroup: Uint8Array
-    tipGetter: WasmTipGetter
+    tipGetter: TipGetter
+    store: IBlockService
 }
 
 export interface IValidationResponse {
@@ -81,11 +73,11 @@ namespace ValidatorWasm {
 }
 
 export namespace Aggregator {
-    export async function setupValidator({notaryGroup,tipGetter}:IValidatorOptions) {
+    export async function setupValidator(opts:IValidatorOptions) {
         const vw = await ValidatorWasm.get()
         return vw.setupValidator({
-            notaryGroup: notaryGroup.serializeBinary(),
-            tipGetter: tipGetterToWasmTipGetter(tipGetter),
+            ...opts,
+            notaryGroup: opts.notaryGroup.serializeBinary(),
         })
     }
 

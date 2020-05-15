@@ -39,7 +39,7 @@ describe('Aggregator Wasm', () => {
     before(async () => {
         let notaryGroup = new NotaryGroup()
         notaryGroup.setId("tester")
-        await Aggregator.setupValidator({notaryGroup, tipGetter: nullGetter})
+        await Aggregator.setupValidator({notaryGroup, tipGetter: nullGetter, store: repo.repo.block})
     })
 
     it('getsPubFromSig', async () => {
@@ -58,4 +58,5 @@ describe('Aggregator Wasm', () => {
         const resp = await Aggregator.validate(abr)
         expect(resp.valid).to.be.true
     })
+
 })

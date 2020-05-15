@@ -6,14 +6,38 @@ import { AddBlockRequest } from 'tupelo-messages/services/services_pb';
 import { Signature, PublicKey, Ownership } from 'tupelo-messages/signatures/signatures_pb';
 
 const dagCBOR = require('ipld-dag-cbor');
+const cbor = require('borc');
 const Block = require('ipld-block');
+
+// class Uint64 {
+//     num:number
+
+//     constructor (num:number) {
+//       this.num = num
+//     }
+  
+//     // Gets called when encoding this object
+//     // gen - instance of the encoder
+//     // obj - the object being encoded
+//     //
+//     // should return true on success and false otherwise
+//     encodeCBOR (gen:any) {
+//       return gen.pushAny(new cbor.Tagged(67, this.num))
+//     }
+//   }
 
 interface TreeBlock {
     height: number
     previousTip?: CID
-    previousBlock?: CID
     transactions: Transaction.AsObject[] // list of Transaction with .toObject called
 }
+
+// interface TreeBlockForDigest {
+//     height: Uint64
+//     previousTip?: CID
+//     previousBlock?: CID
+//     transactions: Transaction.AsObject[] // list of Transaction with .toObject called
+// }
 
 type SignatureMap = {[key:string]:Signature.AsObject}
 
@@ -122,19 +146,44 @@ export class ChainTree extends Dag {
         }
 
         const previousBlock:TreeBlock = (await this.resolve("/chain/end")).value || {}
-        const nextHeight = (previousBlock.height || -1) + 1 // get zero if null otherwise next height
-
+        const nextHeight = ((previousBlock.height === undefined) ? -1 : previousBlock.height) + 1 // get zero if null otherwise next height
+        console.log("nextHeight: ", nextHeight)
         let abr = new AddBlockRequest()
         abr.setPreviousTip(this.tip.buffer)
 
-        let transObjects = trans.map((tx) => {
-            let txObj = tx.toObject()
+        const stateBlocks:{
+            [key:string]:CID
+        } = {}
+
+        const ownershipResp = await this.resolve("/tree/_tupelo/authentications", {touchedBlocks: true})
+        ownershipResp.touchedBlocks?.forEach((id)=> {
+            stateBlocks[id.toBaseEncodedString()] = id
+        })
+
+        const chainResp = await this.resolve("/chain/end", {touchedBlocks: true})
+        chainResp.touchedBlocks?.forEach((id)=> {
+            stateBlocks[id.toBaseEncodedString()] = id
+        })
+
+        let transObjects = await Promise.all(trans.map(async (tx) => {
+            let txObj:any = tx.toObject()
             switch (tx.getType()) {
                 case Transaction.Type["SETDATA"]:
                     txObj.setDataPayload!.value = Buffer.from(txObj.setDataPayload!.value as string, 'base64')
+                    const path = tx.getSetDataPayload()?.getPath()
+                    let resp = await this.resolve(path!, {touchedBlocks: true})
+                    resp.touchedBlocks?.forEach((id)=> {
+                        stateBlocks[id.toBaseEncodedString()] = id
+                    })
+                    break;
+                case Transaction.Type["SETOWNERSHIP"]:
+                    let auths = tx.getSetOwnershipPayload()?.getAuthenticationList()
+                    delete txObj.setOwnershipPayload?.authenticationList
+                    console.log("auths: ", auths)
+                    txObj.setOwnershipPayload.authentication = auths
                     break;
                 default:
-                    throw new Error("only supporting set data for now")
+                    throw new Error("only supporting setData and setOwnership for now")
             }
             Object.keys(txObj).forEach((key)=> {
                 if (Reflect.get(txObj, key) === undefined) {
@@ -142,7 +191,7 @@ export class ChainTree extends Dag {
                 }
             })
             return txObj
-        })
+        }))
 
         let block:TreeBlock = {
             height: nextHeight,
@@ -150,7 +199,6 @@ export class ChainTree extends Dag {
         }
         if (nextHeight > 0) {
             block.previousTip = this.tip
-            block.previousBlock = (await this.resolve("chain")).value.end
         }
 
         let sigResp = await this.key?.signObject(block)!
@@ -169,17 +217,31 @@ export class ChainTree extends Dag {
 
         sigProtoObj.signature = sigResp.signature
         sigProtoObj.ownership?.publicKey!.publicKey! = Buffer.from('')
-
+        console.log("this.key.address: ", this.key.address())
         sigMap[this.key.address()] = sigProtoObj
         let blockWithHeaders:BlockWithHeaders = Object.assign(block, {
             headers: {
                 signatures: sigMap,
             }
         })
+        if (nextHeight > 0) {
+            blockWithHeaders.previousBlock = (await this.resolve("chain")).value.end
+        }
 
         abr.setPayload(Buffer.from(dagCBOR.util.serialize(blockWithHeaders)))
-        abr.setObjectId(Buffer.from(this.key.toDid(), 'utf-8'))
+        abr.setObjectId(Buffer.from((await this.id())!, 'utf-8'))
         abr.setHeight(nextHeight)
+
+        const cids = Object.keys(stateBlocks).map((key)=> {
+            return stateBlocks[key]
+        })
+        const blks = this.store.getMany(cids)
+        let blkBits:Uint8Array[] = []
+        for await (const blk of (blks as any)) { //TODO: get rid of any here
+            blkBits.push(blk.data)
+        }
+        abr.setStateList(blkBits)
+
         return abr
     }
 

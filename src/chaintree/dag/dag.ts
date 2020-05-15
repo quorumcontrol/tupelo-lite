@@ -30,7 +30,7 @@ export interface IBlockService {
   put(block: IBlock): Promise<any>
   putMany(block: IBlock[]): Promise<any>
   get(cid: CID): Promise<IBlock>
-  getMany(cids: CID[]): Promise<IBlock[]>
+  getMany(cids: CID[]): AsyncIterator<IBlock>
   delete(cid: CID): Promise<any>
   setExchange(bitswap: IBitSwap): void
   unsetExchange(): void

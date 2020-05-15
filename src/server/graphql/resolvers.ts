@@ -1,8 +1,7 @@
-import { QueryResolveArgs, ResolvePayload,MutationAddBlockArgs,AddBlockPayload, Block } from "./generated/types";
+import { QueryResolveArgs, ResolvePayload,MutationAddBlockArgs,AddBlockPayload, Block, Resolvers } from "./generated/types";
 import GraphQLJSON from 'graphql-type-json';
 import { ChainDataSource } from "./server";
 import { AddBlockRequest } from "tupelo-messages/services/services_pb";
-import { IBlock } from "../../chaintree";
 
 interface ITupeloContext {
     dataSources: {
