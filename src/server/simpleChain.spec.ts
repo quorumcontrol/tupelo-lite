@@ -132,41 +132,46 @@ describe("SimpleChain", ()=> {
         expect(resp.valid).to.be.true
       })
   
-    //   it('grafts DID-based ownership through an intermediary tree', async ()=> {
-    //     const c = await Community.getDefault()
-    //     // create an organization tree, a user key and an asset, 
-    //     // the user will be in a list on the organization tree
-    //     // and the asset will be owned by that list and the organization did
-    //     // the user should then be able to play a transaction on the asset
+      it('grafts DID-based ownership through an intermediary tree', async ()=> {
+        let repo = await testRepo("graftsThroughIntermediary")
+        let chain = new SimpleChain(repo)
+        const service = new IpfsBlockService(repo.repo)
+
+        // create an organization tree, a user key and an asset, 
+        // the user will be in a list on the organization tree
+        // and the asset will be owned by that list and the organization did
+        // the user should then be able to play a transaction on the asset
   
-    //     const organizationKey = await EcdsaKey.generate()
-    //     const organizationTree = await ChainTree.newEmptyTree(c.blockservice, organizationKey)
-    //     const organizationDid = await organizationTree.id()
+        const organizationKey = EcdsaKey.generate()
+        const organizationTree = await ChainTree.newEmptyTree(service, organizationKey)
+        const organizationDid = await organizationTree.id()
   
-    //     const userKey = await EcdsaKey.generate()
-    //     const userTree = await ChainTree.newEmptyTree(c.blockservice, userKey)
-    //     const userDid = await userTree.id()
-    //     await c.playTransactions(userTree, [
-    //       setDataTransaction('exists', true) // just making sure it exists
-    //     ])
+        const userKey = await EcdsaKey.generate()
+        const userTree = await ChainTree.newEmptyTree(service, userKey)
+        const userDid = await userTree.id()
+        const abr1 = await userTree.newAddBlockRequest([ setDataTransaction('exists', true)])  // just making sure it exists
+        let resp = await chain.add(abr1)
+        await updateChainTreeWithResponse(userTree, resp)
   
-    //     const assetKey = await EcdsaKey.generate()
-    //     const assetTree = await ChainTree.newEmptyTree(c.blockservice, assetKey)
+        const assetKey = await EcdsaKey.generate()
+        const assetTree = await ChainTree.newEmptyTree(service, assetKey)
+        const abr2 = await organizationTree.newAddBlockRequest([setDataTransaction('users', [userDid])])
+        resp = await chain.add(abr2)
+        await updateChainTreeWithResponse(organizationTree, resp)
   
-    //     await c.playTransactions(organizationTree, [
-    //       setDataTransaction('users', [userDid])
-    //     ])
+        const abr3 = await assetTree.newAddBlockRequest([setOwnershipTransaction([organizationDid!, `${organizationDid}/tree/data/users`])])
+        resp = await chain.add(abr3)
+        await updateChainTreeWithResponse(assetTree, resp)
+
+        assetTree.key = userKey
   
-    //     await c.playTransactions(assetTree, [
-    //       setOwnershipTransaction([organizationDid!, `${organizationDid}/tree/data/users`])
-    //     ])
-  
-    //     assetTree.key = userKey
-  
-    //     await c.playTransactions(assetTree, [setDataTransaction("worked", true)])
-    //     const resp = assetTree.resolveData("/worked")
-    //     expect((await resp).value).to.eql(true)
-    //   })
+        const abr4 = await assetTree.newAddBlockRequest([setDataTransaction("worked", true)])
+        resp = await chain.add(abr4)
+        await updateChainTreeWithResponse(assetTree, resp)
+
+        const resolveResp = await assetTree.resolveData("/worked")
+        expect(resolveResp.value).to.eql(true)
+      })
   
     //   it('grafts path-based ownership', async ()=> {
     //     const c = await Community.getDefault()
