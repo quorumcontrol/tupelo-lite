@@ -42,7 +42,6 @@ export const resolvers = {
                 valid: resp.valid,
                 newTip: resp.newTip.toBaseEncodedString(),
                 newBlocks: blocksToGraphql(resp.newNodes)
-                //TODO: the blocks as base64
             }
         }
     }

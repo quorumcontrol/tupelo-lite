@@ -27,6 +27,7 @@ interface WasmValidatorOptions {
     notaryGroup: Uint8Array
     tipGetter: TipGetter
     store: IBlockService
+    cids: any
 }
 
 export interface IValidationResponse {
@@ -78,6 +79,7 @@ export namespace Aggregator {
         return vw.setupValidator({
             ...opts,
             notaryGroup: opts.notaryGroup.serializeBinary(),
+            cids: CID,
         })
     }
 

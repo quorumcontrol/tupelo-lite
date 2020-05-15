@@ -147,7 +147,6 @@ export class ChainTree extends Dag {
 
         const previousBlock:TreeBlock = (await this.resolve("/chain/end")).value || {}
         const nextHeight = ((previousBlock.height === undefined) ? -1 : previousBlock.height) + 1 // get zero if null otherwise next height
-        console.log("nextHeight: ", nextHeight)
         let abr = new AddBlockRequest()
         abr.setPreviousTip(this.tip.buffer)
 
@@ -155,12 +154,22 @@ export class ChainTree extends Dag {
             [key:string]:CID
         } = {}
 
-        const ownershipResp = await this.resolve("/tree/_tupelo/authentications", {touchedBlocks: true})
+        const ownershipResp = await this.resolve("tree/_tupelo/authentications", {touchedBlocks: true})
         ownershipResp.touchedBlocks?.forEach((id)=> {
             stateBlocks[id.toBaseEncodedString()] = id
         })
 
-        const chainResp = await this.resolve("/chain/end", {touchedBlocks: true})
+        const ownershipResp2 = await this.resolve("tree", {touchedBlocks: true})
+        ownershipResp2.touchedBlocks?.forEach((id)=> {
+            stateBlocks[id.toBaseEncodedString()] = id
+        })
+        
+        const ownershipResp3 = await this.resolve("tree/data", {touchedBlocks: true})
+        ownershipResp3.touchedBlocks?.forEach((id)=> {
+            stateBlocks[id.toBaseEncodedString()] = id
+        })
+
+        const chainResp = await this.resolve("chain/end", {touchedBlocks: true})
         chainResp.touchedBlocks?.forEach((id)=> {
             stateBlocks[id.toBaseEncodedString()] = id
         })
@@ -179,7 +188,6 @@ export class ChainTree extends Dag {
                 case Transaction.Type["SETOWNERSHIP"]:
                     let auths = tx.getSetOwnershipPayload()?.getAuthenticationList()
                     delete txObj.setOwnershipPayload?.authenticationList
-                    console.log("auths: ", auths)
                     txObj.setOwnershipPayload.authentication = auths
                     break;
                 default:
@@ -217,7 +225,6 @@ export class ChainTree extends Dag {
 
         sigProtoObj.signature = sigResp.signature
         sigProtoObj.ownership?.publicKey!.publicKey! = Buffer.from('')
-        console.log("this.key.address: ", this.key.address())
         sigMap[this.key.address()] = sigProtoObj
         let blockWithHeaders:BlockWithHeaders = Object.assign(block, {
             headers: {

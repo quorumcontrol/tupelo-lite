@@ -64,10 +64,7 @@ export class EcdsaKey {
         const signingKey = new SigningKey(this.privateKey!)
         const bits = dagCBOR.util.serialize(obj)
 
-        console.log("signing: ", obj, " got: ", bits.toString('hex'))
-
         const digest = (await dagCBOR.util.cid(bits)).multihash.slice(2)
-        console.log("signing digest: ", Buffer.from(digest).toString('hex'))
         let signature = signingKey.signDigest(digest);
 
         // this is weird, but for some reason Go and JS differ in how they handle the last byte of the signature

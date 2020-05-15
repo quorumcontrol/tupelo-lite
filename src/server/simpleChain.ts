@@ -32,7 +32,7 @@ export async function updateChainTreeWithResponse(tree: ChainTree, resp: IValida
 export function bytesToBlocks(bufs: Uint8Array[]): Promise<IBlock[]> {
     return Promise.all(bufs.map(async (nodeBuf) => {
         const cid = await dagCBOR.util.cid(nodeBuf)
-        const block = new Block(nodeBuf, cid)
+        const block = new Block(Buffer.from(nodeBuf), cid)
         return block
     }))
 }
@@ -57,10 +57,8 @@ export class SimpleChain {
 
     async getTip(did: string): Promise<CID | undefined> {
         try {
-            console.log("fetching tip for: ", did)
             const cidBits = await this.repo.get(didToKey(did))
             let cid = new CID(cidBits)
-            console.log("cid: ", cid.toBaseEncodedString())
             return cid
         } catch (err) {
             if (err.code !== ErrNotFound) {
@@ -75,7 +73,7 @@ export class SimpleChain {
         if (!tip) {
             return undefined
         }
-        const dag = new Dag(tip, this.repo.repo.blocks)
+        const dag = new Dag(tip, this.service)
         return await dag.resolve(path) // TODO: send back the blocks too
     }
 
@@ -85,19 +83,19 @@ export class SimpleChain {
             throw new Error(ErrNotValid)
         }
         const did = Buffer.from(abr.getObjectId_asU8()).toString('utf-8')
+
         const tip = await this.getTip(did)
         if (tip && !tip.buffer.equals(abr.getPreviousTip_asU8())) {
             throw new Error(ErrWrongPreviousTip)
         }
 
         await this.repo.put(didToKey(did), resp.newTip.buffer)
-        console.log(`setting ${did} to ${resp.newTip.toBaseEncodedString()}`)
 
         // save the nodes from this to the repo
         // TODO: tie these some how for storage record keeping (allowing GC / charging, etc)
-        const newBlocks = await bytesToBlocks(resp.newNodes.concat(abr.getStateList_asU8()))
-        await this.repo.repo.blocks.putMany(newBlocks)
-
+        const newNodes = resp.newNodes.concat(abr.getStateList_asU8())
+        const newBlocks = await bytesToBlocks(newNodes)
+        await this.service.putMany(newBlocks)
         return resp
     }
 }

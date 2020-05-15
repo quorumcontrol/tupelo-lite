@@ -71,12 +71,10 @@ describe("SimpleChain", ()=> {
         const resp = await chain.add(abr)
         expect(resp.valid).to.be.true
 
-        const newBlocks = await bytesToBlocks(resp.newNodes)
-        await tree.store.putMany(newBlocks)
-        tree.tip = resp.newTip
+        await updateChainTreeWithResponse(tree,resp)
 
         const resolveResp = await tree.resolveData("hi")
-        expect(resolveResp!.value).to.equal("hi")
+        expect(resolveResp.value).to.equal("hi")
 
         // now lets build *another* ABR
         const abr2 = await tree.newAddBlockRequest([setDataTransaction("hi", "bye")])
@@ -94,21 +92,16 @@ describe("SimpleChain", ()=> {
         let chain = new SimpleChain(repo)
         const key = EcdsaKey.generate()
         const newKey = EcdsaKey.generate()
-        console.log(`key did: ${key.toDid()} newKey: ${newKey.toDid()}`)
-
         const tree = await ChainTree.newEmptyTree(new IpfsBlockService(repo.repo), key)
         const abr = await tree.newAddBlockRequest([setOwnershipTransaction([newKey.address()])])
 
-        console.log("----- first abr", Buffer.from(abr.getObjectId_asU8()).toString('utf-8'))
         const resp = await chain.add(abr)
         expect(resp.valid).to.be.true
         await updateChainTreeWithResponse(tree,resp)
-        console.log("resolve: ", (await tree.resolve("tree/_tupelo/authentications")))
         expect((await tree.resolve("tree/_tupelo/authentications")).value).to.have.members([newKey.address()])
         
         tree.key = newKey
         const abr2 = await tree.newAddBlockRequest([setDataTransaction("afterOwnershipChange", "works")])
-        console.log("----- 2nd abr", Buffer.from(abr.getObjectId_asU8()).toString('utf-8'))
 
         const resp2 = await chain.add(abr2)
         expect(resp2.valid).to.be.true
@@ -121,7 +114,6 @@ describe("SimpleChain", ()=> {
         let chain = new SimpleChain(repo)
         
         const parentKey = EcdsaKey.generate()
-        console.log("parent did is: ", parentKey.toDid())
         const parentTree = await ChainTree.newEmptyTree(new IpfsBlockService(repo.repo), parentKey)
         // need to make sure the parentTree exists with the signers
         let resp = await chain.add(await parentTree.newAddBlockRequest([setDataTransaction("hi", "hi")]))
@@ -129,12 +121,10 @@ describe("SimpleChain", ()=> {
 
         const childKey = EcdsaKey.generate()
         const childTree = await ChainTree.newEmptyTree(new IpfsBlockService(repo.repo), childKey)
-        console.log("child key is: ", childKey.toDid())
 
         resp = await chain.add(await childTree.newAddBlockRequest([setOwnershipTransaction([(await parentTree.id())!])]))
         expect(resp.valid).to.be.true
         await updateChainTreeWithResponse(childTree, resp)
-        console.log(await childTree.resolve("/tree/_tupelo/authentications"))
         expect(childTree.tip.toBaseEncodedString()).to.equal(resp.newTip.toBaseEncodedString())
         childTree.key = parentKey
   

@@ -13,6 +13,9 @@ const dagCBOR = require('ipld-dag-cbor')
 const Block = require('ipld-block');
 
 function graphQLtoBlocks(graphQLBlocks: GraphQLBLock[]):Promise<IBlock[]> {
+    if (!graphQLBlocks) {
+        return Promise.resolve([])
+    }
     return Promise.all(graphQLBlocks.map(async (blk)=> {
         const bits = Buffer.from(blk.data, 'base64')
         let cid = await dagCBOR.util.cid(bits)
@@ -62,6 +65,7 @@ describe("graphql interface", ()=> {
                 addBlockRequest: Buffer.from(abr.serializeBinary()).toString('base64')
             }
         })
+        expect(resp.errors).to.be.undefined
         expect(resp.data?.addBlock.valid).to.be.true
 
         const blks = await graphQLtoBlocks(resp.data?.addBlock.newBlocks)
