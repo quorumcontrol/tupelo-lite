@@ -16,6 +16,7 @@ interface IStorageBackendOpts {
 export interface RepoOpts {
     lock:string
     storageBackends:IStorageBackendOpts
+    storageBackendOptions?: IStorageBackendOpts
 }
 
 /**
