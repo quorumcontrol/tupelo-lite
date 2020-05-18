@@ -1,5 +1,5 @@
 {
-  "name": "simple-chain",
+  "name": "tueplo-lite",
   "version": "0.0.1",
   "description": "Immutable data store with digital signatures",
   "main": "lib/index.js",
