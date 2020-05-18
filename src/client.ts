@@ -23,7 +23,12 @@ export interface IAddBlockResponse {
 interface IResolveResponse {
     remainingPath: string[]
     value: any
+    touchedBlocks: IBlock
     errors: any
+}
+
+export interface IResolveOptions {
+    touchedBlocks?: boolean
 }
 
 export async function updateChainTreeWithResponse(tree: ChainTree, resp: IAddBlockResponse) {
@@ -155,16 +160,9 @@ export class Client implements IBlockService {
         }
     }
 
-    async resolve(did:string, path:string):Promise<IResolveResponse> {
+    async resolve(did:string, path:string, opts?:IResolveOptions):Promise<IResolveResponse> {
         const resp = await this.apollo.query({
-            query: gql`
-                query resolve($did: String!, $path: String!) {
-                    resolve(input: {did: $did, path: $path}) {
-                        value
-                        remainingPath
-                    }
-                }
-            `,
+            query: (opts && opts.touchedBlocks) ? resolveQueryBlocks : resolveQueryNoBlocks,
             variables: {
                 did: did,
                 path: path,
@@ -176,3 +174,25 @@ export class Client implements IBlockService {
         }
     }
 }
+
+const resolveQueryNoBlocks = gql`
+query resolve($did: String!, $path: String!) {
+    resolve(input: {did: $did, path: $path}) {
+        value
+        remainingPath
+    }
+}
+`
+
+const resolveQueryBlocks = gql`
+query resolve($did: String!, $path: String!) {
+    resolve(input: {did: $did, path: $path}) {
+        value
+        remainingPath
+        touchedBlocks {
+            cid
+            data
+        }
+    }
+}
+`
