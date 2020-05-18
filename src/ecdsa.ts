@@ -1,10 +1,38 @@
-import { randomBytes, SigningKey, computeAddress,joinSignature } from 'ethers/utils'
+import { randomBytes, SigningKey, computeAddress, joinSignature } from 'ethers/utils'
+import scrypt from 'scrypt-async-modern'
+import pbkdf2 from 'pbkdf2'
 
 const dagCBOR = require('ipld-dag-cbor')
 
 export interface ISignResponse {
     digest: Buffer
     signature: Buffer
+}
+
+function generatePbkdf2Key(phrase: Buffer, salt: Buffer): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+        pbkdf2.pbkdf2(phrase, salt, 216, 32, 'sha256', (err, key) => {
+            if (err) {
+                reject(err)
+                return
+            }
+            resolve(key)
+        })
+    })
+}
+
+function xor(a: Buffer, b: Buffer) {
+    var res = []
+    if (a.length > b.length) {
+        for (var i = 0; i < b.length; i++) {
+            res.push(a[i] ^ b[i])
+        }
+    } else {
+        for (var i = 0; i < a.length; i++) {
+            res.push(a[i] ^ b[i])
+        }
+    }
+    return Buffer.from(res);
 }
 
 /**
@@ -29,10 +57,20 @@ export class EcdsaKey {
     /**
      * Generate a new key based on a passphrase and salt (this goes through the Warp wallet treatment {@link https://keybase.io/warp/warp_1.0.9_SHA256_a2067491ab582bde779f4505055807c2479354633a2216b22cf1e92d1a6e4a87.html})
      */
-    // static passPhraseKey = async (phrase:Uint8Array, salt:Uint8Array) => {
-    //     const pair = await Tupelo.passPhraseKey(phrase, salt)
-    //     return new EcdsaKey(pair[1], pair[0]) 
-    // }
+    static passPhraseKey = async (phrase: Uint8Array, salt: Uint8Array) => {
+        const saltDigest = (await dagCBOR.util.cid(salt)).multihash.slice(2)
+        const scryptKey = await scrypt(phrase, saltDigest, {
+            N: 256,
+            r: 8,
+            p: 1,
+            dkLen: 32,
+            encoding: "binary"
+        });
+        const pbkdf2Key = await generatePbkdf2Key(Buffer.from(phrase), saltDigest)
+        const derived = xor(Buffer.from(scryptKey), pbkdf2Key)
+
+        return EcdsaKey.fromBytes(derived)
+    }
 
     static fromBytes = async (bytes: Uint8Array) => {
         const signingKey = new SigningKey(bytes)

@@ -32,13 +32,6 @@ interface TreeBlock {
     transactions: Transaction.AsObject[] // list of Transaction with .toObject called
 }
 
-// interface TreeBlockForDigest {
-//     height: Uint64
-//     previousTip?: CID
-//     previousBlock?: CID
-//     transactions: Transaction.AsObject[] // list of Transaction with .toObject called
-// }
-
 type SignatureMap = {[key:string]:Signature.AsObject}
 
 interface StandardHeaders {
