@@ -42,7 +42,7 @@ interface IDagStoreResolveResponse {
   value: any
 }
 
-export interface IExtendedDagStoreIterator extends AsyncIterator<IDagStoreResolveResponse> {
+interface IExtendedDagStoreIterator extends AsyncIterator<IDagStoreResolveResponse> {
   first(): Promise<IDagStoreResolveResponse>
   last(): Promise<IDagStoreResolveResponse>
   all(): Promise<IDagStoreResolveResponse[]>
@@ -65,6 +65,7 @@ export interface IResolveResponse {
   remainderPath: string[]
   value: any
   touchedBlocks?: CID[]
+  errors?: any
 }
 
 export interface IResolveOptions {

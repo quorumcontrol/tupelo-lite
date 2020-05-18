@@ -47,6 +47,8 @@ describe("Client", () => {
         // and now querying the resolve works
         const queryResp = await cli.resolve((await tree.id())!, "tree/data/hi")
         expect(queryResp.value).to.equal("hi")
+
+        repo.close()
     })
 
     it('gets ipldblocks', async () => {
@@ -72,10 +74,11 @@ describe("Client", () => {
         })
 
         expect((await localOnlyTree.resolveData("hi")).value).to.equal("hi")
+        repo.close()
     })
 
     it('returns touched blocks', async ()=> {
-        const repo = await testRepo("getBlock")
+        const repo = await testRepo("clientGetTouchedBlocks")
         // use the test server to create a query and mutate function
 
         const tree = await ChainTree.createRandom(new IpfsBlockService(repo.repo))
@@ -86,6 +89,7 @@ describe("Client", () => {
 
         const resolveResp = await cli.resolve((await tree.id())!, "/", {touchedBlocks: true})
         expect(resolveResp.touchedBlocks).to.have.lengthOf(1)
+        repo.close()
     })
 
     it('builds off of existing chaintrees', async () => {
@@ -109,7 +113,6 @@ describe("Client", () => {
         const resolveResp2 = await cli.resolve(key.toDid(), "/tree/data/hi")
         expect(resolveResp2!.value).to.equal("bye")
 
-
         repo.close()
     })
 
@@ -130,6 +133,8 @@ describe("Client", () => {
 
         const resp2 = await cli.addBlock(abr2)
         expect(resp2.valid).to.be.true
+
+        repo.close()
     })
 
     it('grafts ownership through a DID', async () => {
@@ -152,6 +157,8 @@ describe("Client", () => {
 
         resp = await cli.addBlock(await childTree.newAddBlockRequest([setDataTransaction("parentOwnsMe", true)]))
         expect(resp.valid).to.be.true
+
+        repo.close()
     })
 
     it('grafts DID-based ownership through an intermediary tree', async () => {
@@ -192,6 +199,8 @@ describe("Client", () => {
 
         const resolveResp = await assetTree.resolveData("/worked")
         expect(resolveResp.value).to.eql(true)
+
+        repo.close()
     })
 
     it('grafts path-based ownership', async () => {
@@ -228,5 +237,7 @@ describe("Client", () => {
         await updateChainTreeWithResponse(childTree, resp)
 
         expect((await childTree.resolveData("/parentOwnsMe")).value).to.eql(true)
+
+        repo.close()
     })
 })

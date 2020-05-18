@@ -2,7 +2,7 @@ import {ApolloClient, HttpLink, gql} from '@apollo/client'
 import { InMemoryCache } from '@apollo/client/cache';
 import { AddBlockRequest } from 'tupelo-messages';
 import fetch from 'cross-fetch'
-import { ChainTree, IBlock, IBlockService, IBitSwap,IResolveOptions } from './chaintree';
+import { ChainTree, IBlock, IBlockService, IBitSwap,IResolveOptions, IResolveResponse } from './chaintree';
 import CID from 'cids';
 
 const dagCBOR = require('ipld-dag-cbor');
@@ -16,13 +16,6 @@ export interface IAddBlockResponse {
     newTip: CID
     newBlocks: IGraphqlBlock[]
     valid: boolean
-    errors: any
-}
-
-interface IResolveResponse {
-    remainingPath: string[]
-    value: any
-    touchedBlocks: IBlock
     errors: any
 }
 
