@@ -20,7 +20,7 @@ export interface IAddBlockResponse {
     errors: any
 }
 
-export interface IResolveResponse {
+interface IResolveResponse {
     remainingPath: string[]
     value: any
     errors: any
