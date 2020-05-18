@@ -49,6 +49,32 @@ describe("Client", ()=> {
         expect(queryResp.value).to.equal("hi")
     })
 
+    it('gets ipldblocks', async ()=> {
+        const repo = await testRepo("getBlock")
+        // use the test server to create a query and mutate function
+        
+        const tree = await ChainTree.createRandom(new IpfsBlockService(repo.repo))
+        const abr = await tree.newAddBlockRequest([setDataTransaction("hi", "hi")])
+
+        const resp = await cli.addBlock(abr)
+        expect(resp.errors).to.be.undefined
+        expect(resp.valid).to.be.true
+        expect(resp.newBlocks).to.have.lengthOf(6)
+
+        const blks = await graphQLtoBlocks(resp.newBlocks)
+        const blk = await cli.get(blks[0].cid)
+        expect(blk.cid.toBaseEncodedString()).to.equal(blks[0].cid.toBaseEncodedString())
+
+        // now test that it can work to resolve through the chaintree
+        const localOnlyTree = new ChainTree({
+            tip: new CID(resp.newTip),
+            store: cli,
+        })
+
+        expect((await localOnlyTree.resolveData("hi")).value).to.equal("hi")
+        
+      })
+
     it('builds off of existing chaintrees', async ()=> {
         let repo = await testRepo("buildsOnExisting")
 

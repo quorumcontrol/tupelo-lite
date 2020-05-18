@@ -2,8 +2,9 @@ import {ApolloClient, HttpLink, gql} from '@apollo/client'
 import { InMemoryCache } from '@apollo/client/cache';
 import { AddBlockRequest } from 'tupelo-messages';
 import fetch from 'cross-fetch'
-import { ChainTree, IBlock } from './chaintree';
+import { ChainTree, IBlock, IBlockService, IBitSwap } from './chaintree';
 import CID from 'cids';
+import { Transaction } from 'ethers/utils';
 
 const dagCBOR = require('ipld-dag-cbor');
 const Block = require('ipld-block');
@@ -52,7 +53,18 @@ export function bytesToBlocks(bufs: Uint8Array[]): Promise<IBlock[]> {
     }))
 }
 
-export class Client {
+// export interface IBlockService {
+//     put(block: IBlock): Promise<any>
+//     putMany(block: IBlock[]): Promise<any>
+//     get(cid: CID): Promise<IBlock>
+//     getMany(cids: CID[]): AsyncIterator<IBlock>
+//     delete(cid: CID): Promise<any>
+//     setExchange(bitswap: IBitSwap): void
+//     unsetExchange(): void
+//     hasExchange(): boolean
+//   }
+
+export class Client implements IBlockService {
     apollo:ApolloClient<any> // TODO: do we need to support the cache shape?
 
     constructor(url:string) {
@@ -69,6 +81,55 @@ export class Client {
           link: link,
         });
         this.apollo = client
+    }
+
+    async put(block: IBlock) {
+        throw new Error("unsupported")
+    }
+
+    async putMany(block: IBlock[]) {
+        throw new Error("unsupported")
+    }
+
+    setExchange(bitswap: IBitSwap): void {
+        throw new Error("unsupported")
+    }
+
+    unsetExchange(): void {
+        throw new Error("unsupported")
+    }
+
+    delete(cid: CID): Promise<any> {
+        throw new Error("unsupported")
+    }
+
+    async get(cid: CID): Promise<IBlock> {
+        const resp = await this.apollo.query({
+            query: gql`
+                query blocks($ids: [String!]!) {
+                    blocks(input: {ids: $ids}) {
+                        blocks {
+                            cid
+                            data
+                        }
+                    }
+                }
+            `,
+            variables: {
+                ids: [cid.toBaseEncodedString()]
+            },
+        })
+
+        const blocks = await graphQLtoBlocks(resp.data.blocks.blocks)
+        return blocks[0]
+    }
+
+    getMany(cids: CID[]): AsyncIterator<IBlock> {
+        throw new Error("unsupported")
+    }
+
+    hasExchange(): boolean {
+        return false
     }
 
     async addBlock(abr:AddBlockRequest):Promise<IAddBlockResponse> {

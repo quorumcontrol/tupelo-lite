@@ -42,7 +42,7 @@ interface IDagStoreResolveResponse {
   value: any
 }
 
-interface IExtendedDagStoreIterator extends AsyncIterator<IDagStoreResolveResponse> {
+export interface IExtendedDagStoreIterator extends AsyncIterator<IDagStoreResolveResponse> {
   first(): Promise<IDagStoreResolveResponse>
   last(): Promise<IDagStoreResolveResponse>
   all(): Promise<IDagStoreResolveResponse[]>
