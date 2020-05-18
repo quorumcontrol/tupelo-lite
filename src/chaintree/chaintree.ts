@@ -6,7 +6,6 @@ import { AddBlockRequest } from 'tupelo-messages/services/services_pb';
 import { Signature, PublicKey, Ownership } from 'tupelo-messages/signatures/signatures_pb';
 
 const dagCBOR = require('ipld-dag-cbor');
-const cbor = require('borc');
 const Block = require('ipld-block');
 
 // class Uint64 {

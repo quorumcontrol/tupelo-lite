@@ -2,9 +2,8 @@ import {ApolloClient, HttpLink, gql} from '@apollo/client'
 import { InMemoryCache } from '@apollo/client/cache';
 import { AddBlockRequest } from 'tupelo-messages';
 import fetch from 'cross-fetch'
-import { ChainTree, IBlock, IBlockService, IBitSwap } from './chaintree';
+import { ChainTree, IBlock, IBlockService, IBitSwap,IResolveOptions } from './chaintree';
 import CID from 'cids';
-import { Transaction } from 'ethers/utils';
 
 const dagCBOR = require('ipld-dag-cbor');
 const Block = require('ipld-block');
@@ -25,10 +24,6 @@ interface IResolveResponse {
     value: any
     touchedBlocks: IBlock
     errors: any
-}
-
-export interface IResolveOptions {
-    touchedBlocks?: boolean
 }
 
 export async function updateChainTreeWithResponse(tree: ChainTree, resp: IAddBlockResponse) {
