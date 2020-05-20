@@ -1,6 +1,6 @@
 {
   "name": "tupelo-lite",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "Immutable data store with digital signatures",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
