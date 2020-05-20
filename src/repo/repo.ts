@@ -1,12 +1,12 @@
 import { IKey } from '../chaintree/datastore';
-
-const IpfsRepo:any = require('ipfs-repo');
+const IpfsRepo: any = require('ipfs-repo');
+const MemoryDatastore: any = require('interface-datastore').MemoryDatastore;
 
 interface IStorageBackendOpts {
-    root:any
-    blocks:any
-    keys:any
-    datastore:any
+    root: any
+    blocks: any
+    keys: any
+    datastore: any
 }
 
 /**
@@ -14,8 +14,8 @@ interface IStorageBackendOpts {
  * @public
  */
 export interface RepoOpts {
-    lock:string
-    storageBackends:IStorageBackendOpts
+    lock: string
+    storageBackends: IStorageBackendOpts
     storageBackendOptions?: IStorageBackendOpts
 }
 
@@ -26,7 +26,7 @@ export interface RepoOpts {
  * @public
  */
 export interface IQuery {
-    prefix:string
+    prefix: string
 }
 
 /**
@@ -35,17 +35,17 @@ export interface IQuery {
  */
 export class Repo {
 
-    repo:any
+    repo: any
     /**
      * @param name - The name of the repo
      * @param opts - (optional) {@link RepoOpts} - if opts are unspecified, it will use the IPFS repo defaults
      * @public
      */
-    constructor(name:string, opts?:RepoOpts) {
+    constructor(name: string, opts?: RepoOpts) {
         this.repo = new IpfsRepo(name, opts)
     }
 
-    init(opts:any) {
+    init(opts: any) {
         return this.repo.init(opts)
     }
 
@@ -57,20 +57,35 @@ export class Repo {
         return this.repo.close()
     }
 
-    delete(key:IKey) {
+    delete(key: IKey) {
         return this.repo.datastore.delete(key)
     }
 
-    put(key:IKey, val:Uint8Array) {
-        return this.repo.datastore.put(key,val)
+    put(key: IKey, val: Uint8Array) {
+        return this.repo.datastore.put(key, val)
     }
 
-    get(key:IKey) {
+    get(key: IKey) {
         return this.repo.datastore.get(key)
     }
 
-    query(query:IQuery) {
+    query(query: IQuery) {
         return this.repo.datastore.query(query)
+    }
+
+    static memoryRepo = async (name: string) => {
+        const repo = new Repo(name, {
+            lock: 'memory',
+            storageBackends: {
+                root: MemoryDatastore,
+                blocks: MemoryDatastore,
+                keys: MemoryDatastore,
+                datastore: MemoryDatastore
+            }
+        })
+        await repo.init({})
+        await repo.open()
+        return repo
     }
 }
 

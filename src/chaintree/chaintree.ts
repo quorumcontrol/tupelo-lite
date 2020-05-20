@@ -4,9 +4,12 @@ import { SetDataPayload, Transaction, SetOwnershipPayload } from 'tupelo-message
 import { EcdsaKey } from '../ecdsa'
 import { AddBlockRequest } from 'tupelo-messages/services/services_pb';
 import { Signature, PublicKey, Ownership } from 'tupelo-messages/signatures/signatures_pb';
+import debug from 'debug';
 
 const dagCBOR = require('ipld-dag-cbor');
 const Block = require('ipld-block');
+
+const log = debug("chaintree")
 
 // class Uint64 {
 //     num:number
@@ -133,38 +136,45 @@ export class ChainTree extends Dag {
      * @param trans - an array of Transactions to put into the ABR
      */
     async newAddBlockRequest(trans: Transaction[]):Promise<AddBlockRequest> {
+        log("newAddBlockRequest")
         if (!this.key) {
             throw new Error("needa key to create an AddBlockRequest")
         }
+        let did:string
+        try {
+            did = (await this.id())!
+        } catch(err) {
+            console.error("error getting did: ", err)
+            throw err
+        }
+        log(`new add block request ${did}`)
 
         const previousBlock:TreeBlock = (await this.resolve("/chain/end")).value || {}
+        log(`previousBlock ${did}`, previousBlock)
         const nextHeight = ((previousBlock.height === undefined) ? -1 : previousBlock.height) + 1 // get zero if null otherwise next height
         let abr = new AddBlockRequest()
         abr.setPreviousTip(this.tip.buffer)
 
         const stateBlocks:{
             [key:string]:CID
-        } = {}
+        } = {};
 
-        const ownershipResp = await this.resolve("tree/_tupelo/authentications", {touchedBlocks: true})
-        ownershipResp.touchedBlocks?.forEach((id)=> {
-            stateBlocks[id.toBaseEncodedString()] = id
-        })
-
-        const ownershipResp2 = await this.resolve("tree", {touchedBlocks: true})
-        ownershipResp2.touchedBlocks?.forEach((id)=> {
-            stateBlocks[id.toBaseEncodedString()] = id
-        })
-        
-        const ownershipResp3 = await this.resolve("tree/data", {touchedBlocks: true})
-        ownershipResp3.touchedBlocks?.forEach((id)=> {
-            stateBlocks[id.toBaseEncodedString()] = id
-        })
-
-        const chainResp = await this.resolve("chain/end", {touchedBlocks: true})
-        chainResp.touchedBlocks?.forEach((id)=> {
-            stateBlocks[id.toBaseEncodedString()] = id
-        })
+        // collect state we need for all transactions
+        await Promise.all([
+            "tree/_tupelo/authentications", 
+            "tree/data",
+            "chain/end",
+        ].map(async (path)=> {
+            try {
+                const resp = await this.resolve(path, {touchedBlocks: true})
+                resp.touchedBlocks?.forEach((id)=> {
+                    stateBlocks[id.toBaseEncodedString()] = id
+                })
+            } catch(err) {
+                console.error(`error resolving ${path}`, err)
+                throw err
+            }
+        }))
 
         let transObjects = await Promise.all(trans.map(async (tx) => {
             let txObj:any = tx.toObject()
@@ -172,14 +182,20 @@ export class ChainTree extends Dag {
                 case Transaction.Type["SETDATA"]:
                     txObj.setDataPayload!.value = Buffer.from(txObj.setDataPayload!.value as string, 'base64')
                     const path = tx.getSetDataPayload()?.getPath()
-                    let resp = await this.resolve(path!, {touchedBlocks: true})
-                    resp.touchedBlocks?.forEach((id)=> {
-                        stateBlocks[id.toBaseEncodedString()] = id
-                    })
+                    try {
+                        let resp = await this.resolve(`/tree/data/${path}`, {touchedBlocks: true})
+                        resp.touchedBlocks?.forEach((id)=> {
+                            stateBlocks[id.toBaseEncodedString()] = id
+                        })
+                    } catch(err) {
+                        console.error(`error fetching ${path}`, err)
+                        throw err
+                    }
+                   
                     break;
                 case Transaction.Type["SETOWNERSHIP"]:
                     let auths = tx.getSetOwnershipPayload()?.getAuthenticationList()
-                    delete txObj.setOwnershipPayload?.authenticationList
+                    delete txObj.setOwnershipPayload!.authenticationList // important to not use a ? here as that generates javascript that won't actually delete
                     txObj.setOwnershipPayload.authentication = auths
                     break;
                 default:
@@ -192,6 +208,7 @@ export class ChainTree extends Dag {
             })
             return txObj
         }))
+        // log(`transactions (${did})`, transObjects)
 
         let block:TreeBlock = {
             height: nextHeight,
@@ -234,12 +251,18 @@ export class ChainTree extends Dag {
         const cids = Object.keys(stateBlocks).map((key)=> {
             return stateBlocks[key]
         })
-        const blks = this.store.getMany(cids)
-        let blkBits:Uint8Array[] = []
-        for await (const blk of (blks as any)) { //TODO: get rid of any here
-            blkBits.push(blk.data)
+        try {
+            const blks = this.store.getMany(cids)
+            let blkBits:Uint8Array[] = []
+            for await (const blk of (blks as any)) { //TODO: get rid of any here
+                blkBits.push(blk.data)
+            }
+            abr.setStateList(blkBits)
+        } catch(err) {
+            console.error("error getMany: ", err, " cids: ", cids)
+            throw err   
         }
-        abr.setStateList(blkBits)
+      
 
         return abr
     }

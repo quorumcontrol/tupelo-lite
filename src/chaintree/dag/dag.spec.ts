@@ -6,26 +6,9 @@ import { Dag } from './dag';
 import CID from 'cids';
 
 const IpfsBlockService:any = require('ipfs-block-service');
-const MemoryDatastore:any = require('interface-datastore').MemoryDatastore;
 const Ipld: any = require('ipld');
 const dagCBOR = require('ipld-dag-cbor');
 const multicodec = require('multicodec')
-
-
-const testRepo = async () => {
-    const repo = new Repo('dag-test', {
-      lock: 'memory',
-      storageBackends: {
-        root: MemoryDatastore,
-        blocks: MemoryDatastore,
-        keys: MemoryDatastore,
-        datastore: MemoryDatastore
-      }
-    })
-    await repo.init({})
-    await repo.open()
-    return repo
-}
 
 interface ICascadedNode {
   someData:string
@@ -68,7 +51,7 @@ describe('Dag', ()=> {
     let ipldResolver:any // Ipld instance
 
     before(async ()=> {
-      repo = await testRepo()
+      repo = await Repo.memoryRepo('dag-test')
       dagStore = new IpfsBlockService(repo.repo)
       ipldResolver = new Ipld({blockService: dagStore})
     })
@@ -83,6 +66,11 @@ describe('Dag', ()=> {
       const d = new Dag(cascadedResponse.cids[2], dagStore)
       const resp = await d.resolve("previous/previous/someData", {touchedBlocks: true})
       expect(resp.touchedBlocks).to.have.lengthOf(3)
+
+      // and still returns them when not found
+
+      const resp2 = await d.resolve("previous/previous/someData/otherData", {touchedBlocks: true})
+      expect(resp2.touchedBlocks).to.have.lengthOf(3)
     })
 
     it('resolves through different nodes', async ()=> {

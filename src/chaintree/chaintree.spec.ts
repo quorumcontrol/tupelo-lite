@@ -7,30 +7,13 @@ import Repo from '../repo/repo';
 import { AddBlockRequest } from 'tupelo-messages/services/services_pb';
 
 const IpfsBlockService: any = require('ipfs-block-service');
-const MemoryDatastore: any = require('interface-datastore').MemoryDatastore;
-
-
-const testRepo = async () => {
-  const repo = new Repo('chaintree-test', {
-    lock: 'memory',
-    storageBackends: {
-      root: MemoryDatastore,
-      blocks: MemoryDatastore,
-      keys: MemoryDatastore,
-      datastore: MemoryDatastore
-    }
-  })
-  await repo.init({})
-  await repo.open()
-  return repo
-}
 
 describe('ChainTree', () => {
 
   let repo: Repo
 
   before(async () => {
-    repo = await testRepo()
+    repo = await Repo.memoryRepo('chaintree-test')
   })
 
   it('should generate a new empty ChainTree with nodes set', async () => {

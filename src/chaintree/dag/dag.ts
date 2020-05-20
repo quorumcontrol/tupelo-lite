@@ -1,4 +1,7 @@
 import CID from 'cids';
+import debug from 'debug';
+
+const log = debug("chaintree.dag")
 
 const Ipld: any = require('ipld');
 
@@ -65,7 +68,6 @@ export interface IResolveResponse {
   remainderPath: string[]
   value: any
   touchedBlocks?: CID[]
-  errors?: any
 }
 
 export interface IResolveOptions {
@@ -118,27 +120,35 @@ export class Dag {
     } else {
       strPath = path
     }
-    const resolved: IExtendedDagStoreIterator = this.dagStore.resolve(tip, strPath)
+    log("calling dagstore resolve for ", tip.toBaseEncodedString())
+    const resolved = this.dagStore.resolve(tip, strPath)
     let lastVal
     let touched:CID[] = [tip]
     try {
 
       if (opts?.touchedBlocks) {
-        const allVals = await resolved.all()
-        allVals.forEach((resp:IDagStoreResolveResponse)=> {
-          if (CID.isCID(resp.value)) {
-            touched.push(resp.value)
+        let allVals:IDagStoreResolveResponse[] = []
+        let done = false
+        while (!done) {
+          let resp = await resolved.next()
+          if (resp.done) {
+            done = true
+            break
           }
-        })
+          allVals.push(resp.value)
+
+          if (CID.isCID(resp.value.value)) {
+            touched.push(resp.value.value)
+          }
+        }
         lastVal = allVals[allVals.length - 1]
       } else {
         lastVal = await resolved.last()
       }
-
     } catch (err) {
       const e: Error = err;
-
       if (!e.message.startsWith("Object has no property")) {
+        log("err resolving: ", e.message, e.stack)
         throw err
       }
     }

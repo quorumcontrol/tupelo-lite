@@ -1,33 +1,18 @@
 import 'mocha'
 import { expect } from 'chai'
 import { Client, updateChainTreeWithResponse, graphQLtoBlocks } from './client'
+import {BlockService} from './community'
 import { ChainTree, setDataTransaction, CID, setOwnershipTransaction } from './chaintree'
 import Repo from './repo/repo'
 import { EcdsaKey } from './ecdsa'
 
 const IpfsBlockService: any = require('ipfs-block-service');
-const MemoryDatastore: any = require('interface-datastore').MemoryDatastore;
-
-const testRepo = async (name: string) => {
-    const repo = new Repo(name, {
-        lock: 'memory',
-        storageBackends: {
-            root: MemoryDatastore,
-            blocks: MemoryDatastore,
-            keys: MemoryDatastore,
-            datastore: MemoryDatastore
-        }
-    })
-    await repo.init({})
-    await repo.open()
-    return repo
-}
 
 const cli = new Client("http://localhost:9011/graphql")
 
 describe("Client", () => {
     it('adds blocks', async () => {
-        const repo = await testRepo("addsBlocks")
+        const repo = await Repo.memoryRepo("addsBlocks")
         // use the test server to create a query and mutate function
 
         const tree = await ChainTree.createRandom(new IpfsBlockService(repo.repo))
@@ -51,8 +36,37 @@ describe("Client", () => {
         repo.close()
     })
 
+    it('supports multiple transactions', async ()=> {
+        const repo = await Repo.memoryRepo("addsBlocks")
+        // use the test server to create a query and mutate function
+        const newKey = EcdsaKey.generate()
+        const tree = await ChainTree.createRandom(new IpfsBlockService(repo.repo))
+        const abr = await tree.newAddBlockRequest([
+            setOwnershipTransaction([newKey.address()]),
+            setDataTransaction("hi", "hi"),
+            setDataTransaction("bye", "bye"),
+        ])
+
+        const resp = await cli.addBlock(abr)
+        expect(resp.errors).to.be.undefined
+        expect(resp.valid).to.be.true
+        expect(resp.newBlocks).to.have.lengthOf(11)
+
+        const blks = await graphQLtoBlocks(resp.newBlocks)
+        await repo.repo.blocks.putMany(blks)
+
+        tree.tip = new CID(resp.newTip)
+        expect((await tree.resolveData("hi")).value).to.equal("hi")
+
+        // and now querying the resolve works
+        const queryResp = await cli.resolve((await tree.id())!, "tree/data/hi")
+        expect(queryResp.value).to.equal("hi")
+
+        repo.close()
+    })
+
     it('gets ipldblocks', async () => {
-        const repo = await testRepo("getBlock")
+        const repo = await Repo.memoryRepo("getBlock")
         // use the test server to create a query and mutate function
 
         const tree = await ChainTree.createRandom(new IpfsBlockService(repo.repo))
@@ -70,7 +84,7 @@ describe("Client", () => {
         // now test that it can work to resolve through the chaintree
         const localOnlyTree = new ChainTree({
             tip: new CID(resp.newTip),
-            store: cli,
+            store: new BlockService(cli, repo),
         })
 
         expect((await localOnlyTree.resolveData("hi")).value).to.equal("hi")
@@ -78,7 +92,7 @@ describe("Client", () => {
     })
 
     it('returns touched blocks', async ()=> {
-        const repo = await testRepo("clientGetTouchedBlocks")
+        const repo = await Repo.memoryRepo("clientGetTouchedBlocks")
         // use the test server to create a query and mutate function
 
         const tree = await ChainTree.createRandom(new IpfsBlockService(repo.repo))
@@ -93,7 +107,7 @@ describe("Client", () => {
     })
 
     it('builds off of existing chaintrees', async () => {
-        let repo = await testRepo("buildsOnExisting")
+        let repo = await Repo.memoryRepo("buildsOnExisting")
 
         const key = EcdsaKey.generate()
         const tree = await ChainTree.newEmptyTree(new IpfsBlockService(repo.repo), key)
@@ -106,18 +120,36 @@ describe("Client", () => {
         const resolveResp = await tree.resolveData("hi")
         expect(resolveResp.value).to.equal("hi")
 
-        // now lets build *another* ABR
-        const abr2 = await tree.newAddBlockRequest([setDataTransaction("hi", "bye")])
+        // now lets build *another* ABR where we specifically do a setOwnershipTransaction
+        // there was previously a bug where if the last block has a setOwnership it would error because of how
+        // go and javascript handle non-existant fields (null vs undefined)
+        const newKey = EcdsaKey.generate()
+
+        const abr2 = await tree.newAddBlockRequest([
+            setOwnershipTransaction([newKey.address()]),
+            setDataTransaction("hi", "bye"),
+        ])
         const resp2 = await cli.addBlock(abr2)
         expect(resp2.valid).to.be.true
         const resolveResp2 = await cli.resolve(key.toDid(), "/tree/data/hi")
         expect(resolveResp2!.value).to.equal("bye")
+        await updateChainTreeWithResponse(tree, resp2)
+
+        tree.key = newKey // we changed ownership above, set to the new key
+        // so now we build one more transaction to make sure the case of setOwnership in the end block is handled
+        const abr3 = await tree.newAddBlockRequest([
+            setDataTransaction("hi", "third"),
+        ])
+        const resp3 = await cli.addBlock(abr3)
+        expect(resp3.valid).to.be.true
+        const resolveResp3 = await cli.resolve(key.toDid(), "/tree/data/hi")
+        expect(resolveResp3!.value).to.equal("third")
 
         repo.close()
     })
 
     it('supports ownership changes', async () => {
-        let repo = await testRepo("ownershipChanges")
+        let repo = await Repo.memoryRepo("ownershipChanges")
         const key = EcdsaKey.generate()
         const newKey = EcdsaKey.generate()
         const tree = await ChainTree.newEmptyTree(new IpfsBlockService(repo.repo), key)
@@ -138,7 +170,7 @@ describe("Client", () => {
     })
 
     it('grafts ownership through a DID', async () => {
-        let repo = await testRepo("graftsThroughDID")
+        let repo = await Repo.memoryRepo("graftsThroughDID")
 
         const parentKey = EcdsaKey.generate()
         const parentTree = await ChainTree.newEmptyTree(new IpfsBlockService(repo.repo), parentKey)
@@ -162,7 +194,7 @@ describe("Client", () => {
     })
 
     it('grafts DID-based ownership through an intermediary tree', async () => {
-        let repo = await testRepo("graftsThroughIntermediary")
+        let repo = await Repo.memoryRepo("graftsThroughIntermediary")
         const service = new IpfsBlockService(repo.repo)
 
         // create an organization tree, a user key and an asset, 
@@ -204,7 +236,7 @@ describe("Client", () => {
     })
 
     it('grafts path-based ownership', async () => {
-        let repo = await testRepo('grafts path-based ownership')
+        let repo = await Repo.memoryRepo('grafts path-based ownership')
         const service = new IpfsBlockService(repo.repo)
 
         const parentKey = EcdsaKey.generate()

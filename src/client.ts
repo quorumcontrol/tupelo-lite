@@ -2,11 +2,13 @@ import {ApolloClient, HttpLink, gql} from '@apollo/client'
 import { InMemoryCache } from '@apollo/client/cache';
 import { AddBlockRequest } from 'tupelo-messages';
 import fetch from 'cross-fetch'
-import { ChainTree, IBlock, IBlockService, IBitSwap,IResolveOptions, IResolveResponse } from './chaintree';
+import { ChainTree, IBlock,IResolveOptions } from './chaintree';
 import CID from 'cids';
-
+import debug from 'debug';
 const dagCBOR = require('ipld-dag-cbor');
 const Block = require('ipld-block');
+
+const log = debug("client")
 
 export interface IGraphqlBlock {
     data: string
@@ -17,6 +19,13 @@ export interface IAddBlockResponse {
     newBlocks: IGraphqlBlock[]
     valid: boolean
     errors: any
+}
+
+export interface IClientResolveResponse {
+    remainderPath: string[]
+    value: any
+    touchedBlocks?: IBlock[]
+    errors?: any
 }
 
 export async function updateChainTreeWithResponse(tree: ChainTree, resp: IAddBlockResponse) {
@@ -46,18 +55,7 @@ export function bytesToBlocks(bufs: Uint8Array[]): Promise<IBlock[]> {
     }))
 }
 
-// export interface IBlockService {
-//     put(block: IBlock): Promise<any>
-//     putMany(block: IBlock[]): Promise<any>
-//     get(cid: CID): Promise<IBlock>
-//     getMany(cids: CID[]): AsyncIterator<IBlock>
-//     delete(cid: CID): Promise<any>
-//     setExchange(bitswap: IBitSwap): void
-//     unsetExchange(): void
-//     hasExchange(): boolean
-//   }
-
-export class Client implements IBlockService {
+export class Client {
     apollo:ApolloClient<any> // TODO: do we need to support the cache shape?
 
     constructor(url:string) {
@@ -76,90 +74,93 @@ export class Client implements IBlockService {
         this.apollo = client
     }
 
-    async put(block: IBlock) {
-        throw new Error("unsupported")
-    }
-
-    async putMany(block: IBlock[]) {
-        throw new Error("unsupported")
-    }
-
-    setExchange(bitswap: IBitSwap): void {
-        throw new Error("unsupported")
-    }
-
-    unsetExchange(): void {
-        throw new Error("unsupported")
-    }
-
-    delete(cid: CID): Promise<any> {
-        throw new Error("unsupported")
+    async addBlock(abr:AddBlockRequest):Promise<IAddBlockResponse> {
+        try {
+            const resp = await this.apollo.mutate({
+                mutation: gql`
+                    mutation addBlock($addBlockRequest: String!) {
+                        addBlock(input: {addBlockRequest: $addBlockRequest}) {
+                            valid
+                            newTip
+                            newBlocks {
+                                data
+                            }
+                        }
+                    }
+                `,
+                variables: {
+                    addBlockRequest: Buffer.from(abr.serializeBinary()).toString('base64')
+                }
+            })
+            return {
+                ...resp.data.addBlock,
+                errors: resp.errors
+            }
+        } catch(err) {
+            console.error("addBlock error: ", err)
+            throw err
+        }
     }
 
     async get(cid: CID): Promise<IBlock> {
-        const resp = await this.apollo.query({
-            query: gql`
-                query blocks($ids: [String!]!) {
-                    blocks(input: {ids: $ids}) {
-                        blocks {
-                            cid
-                            data
+        log(`get ${cid.toBaseEncodedString()}`)
+        try {
+            const resp = await this.apollo.query({
+                query: gql`
+                    query blocks($ids: [String!]!) {
+                        blocks(input: {ids: $ids}) {
+                            blocks {
+                                cid
+                                data
+                            }
                         }
                     }
-                }
-            `,
-            variables: {
-                ids: [cid.toBaseEncodedString()]
-            },
-        })
-
-        const blocks = await graphQLtoBlocks(resp.data.blocks.blocks)
-        return blocks[0]
-    }
-
-    getMany(cids: CID[]): AsyncIterator<IBlock> {
-        throw new Error("unsupported")
-    }
-
-    hasExchange(): boolean {
-        return false
-    }
-
-    async addBlock(abr:AddBlockRequest):Promise<IAddBlockResponse> {
-        const resp = await this.apollo.mutate({
-            mutation: gql`
-                mutation addBlock($addBlockRequest: String!) {
-                    addBlock(input: {addBlockRequest: $addBlockRequest}) {
-                        valid
-                        newTip
-                        newBlocks {
-                            data
-                        }
-                    }
-                }
-            `,
-            variables: {
-                addBlockRequest: Buffer.from(abr.serializeBinary()).toString('base64')
+                `,
+                variables: {
+                    ids: [cid.toBaseEncodedString()]
+                },
+            })
+            if (resp.errors) {
+                console.error("graphql errors: ", resp.errors)
+                throw new Error("errors: " + resp.errors.toString())
             }
-        })
-        return {
-            ...resp.data.addBlock,
-            errors: resp.errors
+    
+            const blocks = await graphQLtoBlocks(resp.data.blocks.blocks)
+            log(`get returning ${cid.toBaseEncodedString()}`, blocks)
+            return blocks[0]
+        } catch(err) {
+            log("graphql error: ", err)
+            throw err
         }
     }
 
-    async resolve(did:string, path:string, opts?:IResolveOptions):Promise<IResolveResponse> {
-        const resp = await this.apollo.query({
-            query: (opts && opts.touchedBlocks) ? resolveQueryBlocks : resolveQueryNoBlocks,
-            variables: {
-                did: did,
-                path: path,
+    async resolve(did:string, path:string, opts?:IResolveOptions):Promise<IClientResolveResponse> {
+        log(`resolve did: ${did} ${path}`)
+        try {
+            const resp = await this.apollo.query({
+                query: (opts && opts.touchedBlocks) ? resolveQueryBlocks : resolveQueryNoBlocks,
+                variables: {
+                    did: did,
+                    path: path,
+                },
+                fetchPolicy: 'network-only',
+            })
+    
+            let blocks:IBlock[] = []
+            if (resp.data.resolve.touchedBlocks) {
+                blocks = await graphQLtoBlocks(resp.data.resolve.touchedBlocks)
             }
-        })
-        return {
-            ...resp.data.resolve,
-            errors: resp.errors
+    
+            return {
+                ...resp.data.resolve,
+                touchedBlocks:blocks,
+                errors: resp.errors
+            }
+        } catch (err) {
+            log(`resolve did: ${did} ${path}, err: `, err)
+            throw err
         }
+        
     }
 }
 
