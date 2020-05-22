@@ -7,3 +7,4 @@ dist/
 temp/
 .cache
 builddocker/.gopath
+browser*
