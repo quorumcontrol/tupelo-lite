@@ -11,5 +11,5 @@ npm install tupelo-lite
 See: https://runkit.com/tobowers/tupelo-lite/0.0.4 for a walk-through. The tests are pretty extensive in this repo as well. They do require running a local signer like so:
 
 ```
-cd tupelo/aggregator/api/server && go run main.go
+cd aggregator/api/server && go run main.go
 ```
