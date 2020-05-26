@@ -12,6 +12,7 @@ require (
 	github.com/ipfs/go-hamt-ipld v0.0.13
 	github.com/ipfs/go-ipld-format v0.2.0
 	github.com/ipfs/go-log v1.0.4
+	github.com/open-policy-agent/opa v0.20.4
 	github.com/opentracing/opentracing-go v1.1.0
 	github.com/quorumcontrol/chaintree v1.0.2-0.20200501142445-c20387b71253
 	github.com/quorumcontrol/go-ds-dynamodb v0.0.0-20200523131057-fad30d0593bb

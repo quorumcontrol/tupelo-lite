@@ -85,6 +85,67 @@ func TestGetLatest(t *testing.T) {
 		assert.Len(t, remain, 0)
 		assert.Equal(t, "value", resp)
 	})
+
+	t.Run("works with a policy", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		treeKey, err := crypto.GenerateKey()
+		require.Nil(t, err)
+
+		abr1 := testhelpers.NewValidTransactionWithPathAndValue(t, treeKey, "/.wellKnown/policy",
+			`package example.authz
+
+default allow = false
+
+allow {
+	input.method = "GET"
+}
+`)
+		_, err = agg.Add(ctx, &abr1)
+		require.Nil(t, err)
+
+		tree, err := agg.GetLatest(ctx, string(abr1.ObjectId))
+		require.Nil(t, err)
+
+		_, remain, err := tree.Dag.Resolve(ctx, []string{"tree", "data", ".wellKnown", "policy"})
+		require.Nil(t, err)
+		assert.Len(t, remain, 0)
+		// assert.Equal(t, "value", resp)
+	})
+}
+
+func BenchmarkSimplePolicy(b *testing.B) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ng := types.NewNotaryGroup("testnotary")
+
+	agg, err := NewAggregator(ctx, NewMemoryStore(), ng)
+	require.Nil(b, err)
+
+	treeKey, err := crypto.GenerateKey()
+	require.Nil(b, err)
+
+	abr1 := testhelpers.NewValidTransactionWithPathAndValue(b, treeKey, "/.wellKnown/policy",
+		`package example.authz
+
+default allow = false
+
+allow {
+	input.method = "GET"
+}
+`)
+	_, err = agg.Add(ctx, &abr1)
+	require.Nil(b, err)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, err = agg.GetLatest(ctx, string(abr1.ObjectId))
+	}
+	b.StopTimer()
+	require.Nil(b, err)
 }
 
 // BenchmarkAdd-12    	    1504	    861040 ns/op	  199471 B/op	    2992 allocs/op

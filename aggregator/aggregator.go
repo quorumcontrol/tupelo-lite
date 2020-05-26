@@ -10,6 +10,7 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
 
+	"github.com/open-policy-agent/opa/rego"
 	"github.com/quorumcontrol/chaintree/chaintree"
 	"github.com/quorumcontrol/chaintree/dag"
 	"github.com/quorumcontrol/chaintree/graftabledag"
@@ -100,7 +101,44 @@ func (a *Aggregator) GetLatest(ctx context.Context, objectID string) (*chaintree
 	if err != nil {
 		return nil, fmt.Errorf("error creating tree: %w", err)
 	}
-	return tree, nil
+
+	policy, remain, err := dag.Resolve(ctx, []string{"tree", "data", ".wellKnown", "policy"})
+	if err != nil {
+		return nil, fmt.Errorf("error getting policy: %v", err)
+	}
+	if len(remain) > 0 {
+		return tree, nil
+	}
+	// otherwise we have a policy
+	query, err := rego.New(
+		rego.Query("x = data.example.authz.allow"),
+		rego.Module("example.authz", policy.(string)),
+	).PrepareForEval(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("error evaluating: %w", err)
+	}
+
+	input := map[string]interface{}{
+		"method": "GET",
+		"path":   []interface{}{"salary", "bob"},
+		"subject": map[string]interface{}{
+			"user":   "bob",
+			"groups": []interface{}{"sales", "marketing"},
+		},
+	}
+
+	results, err := query.Eval(ctx, rego.EvalInput(input))
+	if err != nil {
+		return nil, fmt.Errorf("error evaluating: %w", err)
+	} else if len(results) == 0 {
+		return nil, fmt.Errorf("undefined results")
+	} else if result, ok := results[0].Bindings["x"].(bool); !ok {
+		return nil, fmt.Errorf("unknown result type: %v", result)
+	} else {
+		return tree, nil
+	}
+
 }
 
 func (a *Aggregator) Add(ctx context.Context, abr *services.AddBlockRequest) (*AddResponse, error) {
