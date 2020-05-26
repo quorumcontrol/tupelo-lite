@@ -7,3 +7,5 @@ temp/
 .cache
 builddocker/.gopath
 browser*
+.serverless
+aggregator/api/handler/bin/

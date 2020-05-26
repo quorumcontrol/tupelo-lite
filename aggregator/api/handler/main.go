@@ -12,6 +12,7 @@ import (
 	"github.com/graph-gophers/graphql-go"
 	"github.com/ipfs/go-datastore"
 	s3ds "github.com/ipfs/go-ds-s3"
+	dynamods "github.com/quorumcontrol/go-ds-dynamodb"
 	"github.com/quorumcontrol/tupelo-lite/aggregator"
 	"github.com/quorumcontrol/tupelo-lite/aggregator/api"
 )
@@ -89,6 +90,18 @@ func getDatastore() datastore.Batching {
 			panic(err)
 		}
 		return ds
+	}
+
+	tableName, ok := os.LookupEnv("TABLE_NAME")
+	if ok {
+		log.Println("using dynamo datastore: ", tableName)
+		dynds, err := dynamods.NewDynamoDatastore(dynamods.Config{
+			TableName: tableName,
+		})
+		if err != nil {
+			panic(err)
+		}
+		return dynds
 	}
 
 	return aggregator.NewMemoryStore()

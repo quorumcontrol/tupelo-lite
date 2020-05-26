@@ -14,6 +14,7 @@ require (
 	github.com/ipfs/go-log v1.0.4
 	github.com/opentracing/opentracing-go v1.1.0
 	github.com/quorumcontrol/chaintree v1.0.2-0.20200501142445-c20387b71253
+	github.com/quorumcontrol/go-ds-dynamodb v0.0.0-20200523131057-fad30d0593bb
 	github.com/quorumcontrol/messages/v2 v2.1.3-0.20200129115245-2bfec5177653
 	github.com/quorumcontrol/tupelo v0.7.2-0.20200523064345-9250e46da3f4
 	github.com/stretchr/testify v1.5.1
