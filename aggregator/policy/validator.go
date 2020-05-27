@@ -18,7 +18,75 @@ func errToCoded(err error) chaintree.CodedError {
 
 var policyPath = []string{"tree", "data", ".wellKnown", "policies"}
 
-func PolicyValidator(tree *dag.Dag, blockWithHeaders *chaintree.BlockWithHeaders) (bool, chaintree.CodedError) {
+/*
+Validator looks at a ChainTree and if it contains policies at policyPath (tree/data/.wellKnown/policies)
+then it will evaluate that policy.
+
+See https://www.openpolicyagent.org/ for a complete language description
+
+If the policy has a "wants" package that package is expected to return a "path" array of strings that
+will then be passed back into the query evaluated from the tree.
+
+The simplest policy is just a "main" that uses the blockWithHeaders and root maps only (wants is optional)
+
+The Input to this takes the shape of the block with headers.
+
+If there is a wants array that will be added to the blockWithHeaders as the key "paths" which is a map
+with string keys (the paths) mapped to their resolved value.
+
+For example:
+
+```
+policies := map[string]string{
+	"wants": `
+		package wants
+		paths = ["tree/data/somePath"]
+	`,
+	"main": `
+		package main
+		default allow = false
+		allow {
+			input.paths["tree/data/somePath"] == "helloWorld"
+		}
+	`,
+}
+```
+
+That will produce the input of the blockWithHeaders and blockWithHeaders.paths will == {
+	"tree/data/somePath": <resolvedValue>
+}
+
+It's possible to include other packages and use them from main as well.
+
+For example:
+
+policies := map[string]string{
+		"tupelo.nopolicychange": `
+			package tupelo.nopolicychange
+
+			default allow = false
+
+			modifies_policy {
+			    contains(input.transactions[_].setDataPayload.path, ".wellKnown/policies")
+			}
+
+			allow {
+			    not modifies_policy
+			}
+		`,
+		"main": `
+			package main
+			default allow = false
+
+			allow {
+				data.tupelo.nopolicychange.allow
+			}
+		`,
+	}
+
+
+*/
+func Validator(tree *dag.Dag, blockWithHeaders *chaintree.BlockWithHeaders) (bool, chaintree.CodedError) {
 	ctx := context.TODO()
 	policies, remain, err := tree.Resolve(ctx, policyPath)
 	if err != nil {
@@ -27,11 +95,12 @@ func PolicyValidator(tree *dag.Dag, blockWithHeaders *chaintree.BlockWithHeaders
 	if len(remain) > 0 {
 		return true, nil
 	}
-	// otherwise we have a policy map
+
+	// otherwise we have a policy map and we should evaluate
 
 	policyMap, ok := policies.(map[string]interface{})
 	if !ok {
-		return false, errToCoded(fmt.Errorf("error converting: %v", policies))
+		return false, errToCoded(fmt.Errorf("error converting poicies: %T %v", policies, policies))
 	}
 
 	var modules []func(*rego.Rego)
@@ -58,14 +127,14 @@ func PolicyValidator(tree *dag.Dag, blockWithHeaders *chaintree.BlockWithHeaders
 		return false, errToCoded(fmt.Errorf("error evaluating: %w", err))
 	}
 
-	blockWithHeadersInput := make(map[string]interface{})
+	inputMap := make(map[string]interface{})
 
-	err = typecaster.ToType(blockWithHeaders, &blockWithHeadersInput)
+	err = typecaster.ToType(blockWithHeaders, &inputMap)
 	if err != nil {
 		return false, errToCoded(fmt.Errorf("error getting input"))
 	}
 
-	results, err := query.Eval(ctx, rego.EvalInput(blockWithHeadersInput))
+	results, err := query.Eval(ctx, rego.EvalInput(inputMap))
 	if err != nil {
 		return false, errToCoded(fmt.Errorf("error evaluating: %w", err))
 	}
@@ -94,8 +163,8 @@ func PolicyValidator(tree *dag.Dag, blockWithHeaders *chaintree.BlockWithHeaders
 			}
 			wantResults[path] = val
 		}
-		blockWithHeadersInput["paths"] = wantResults
-		results, err := query.Eval(ctx, rego.EvalInput(blockWithHeadersInput))
+		inputMap["paths"] = wantResults
+		results, err := query.Eval(ctx, rego.EvalInput(inputMap))
 		if err != nil {
 			return false, errToCoded(fmt.Errorf("error evaluating: %w", err))
 		}
