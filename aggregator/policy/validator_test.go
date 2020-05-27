@@ -20,7 +20,7 @@ func blockWithHeadersFromAbr(abr *services.AddBlockRequest) (*chaintree.BlockWit
 	return block, err
 }
 
-func TestPolicy(t *testing.T) {
+func TestBasicPolicy(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	store := nodestore.MustMemoryStore(ctx)
@@ -60,6 +60,49 @@ func TestPolicy(t *testing.T) {
 		require.Nil(t, err)
 		require.False(t, valid)
 	})
+}
+
+func TestPolicyWithWants(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	store := nodestore.MustMemoryStore(ctx)
+
+	policies := map[string]string{
+		"wants": `
+			package wants
+			paths = ["tree/data/somePath"]
+		`,
+		"main": `
+			package main
+			default allow = false
+
+			allow {
+				input.paths["tree/data/somePath"] == "helloWorld"
+			}
+		`,
+	}
+
+	treeKey, err := crypto.GenerateKey()
+	require.Nil(t, err)
+	did := consensus.EcdsaPubkeyToDid(treeKey.PublicKey)
+
+	tree, err := consensus.NewEmptyTree(ctx, did, store).SetAsLink(ctx, []string{"tree", "data", ".wellKnown", "policies"}, policies)
+	require.Nil(t, err)
+
+	// test that the policy is false (but no error) when the path isn't set
+	abr := testhelpers.NewValidTransactionWithPathAndValue(t, treeKey, "no-matter", "here")
+	block, err := blockWithHeadersFromAbr(&abr)
+	require.Nil(t, err)
+	valid, err := PolicyValidator(tree, block)
+	require.Nil(t, err)
+	require.False(t, valid)
+
+	// but as soon as we set the link it works (meaning that the value of the path was passed in)
+	treeWithValue, err := tree.SetAsLink(ctx, []string{"tree", "data", "somePath"}, "helloWorld")
+	require.Nil(t, err)
+	valid, err = PolicyValidator(treeWithValue, block)
+	require.Nil(t, err)
+	require.True(t, valid)
 }
 
 // BenchmarkPolicyExecution-12    	    2108	    544903 ns/op	  258595 B/op	    5108 allocs/op
