@@ -10,6 +10,7 @@ require (
 	github.com/ipfs/go-datastore v0.4.4
 	github.com/ipfs/go-ds-s3 v0.5.0
 	github.com/ipfs/go-hamt-ipld v0.0.13
+	github.com/ipfs/go-ipld-cbor v0.0.4
 	github.com/ipfs/go-ipld-format v0.2.0
 	github.com/ipfs/go-log v1.0.4
 	github.com/open-policy-agent/opa v0.20.4
