@@ -60,5 +60,43 @@ func TestPolicy(t *testing.T) {
 		require.Nil(t, err)
 		require.False(t, valid)
 	})
+}
 
+// BenchmarkPolicyExecution-12    	    2108	    544903 ns/op	  258595 B/op	    5108 allocs/op
+func BenchmarkPolicyExecution(b *testing.B) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	store := nodestore.MustMemoryStore(ctx)
+
+	policies := map[string]string{
+		"tupelo.nopolicychange": NoPolicyChange,
+		"main": `
+			package main
+			default allow = false
+
+			allow {
+				data.tupelo.nopolicychange.allow
+			}
+		`,
+	}
+
+	treeKey, err := crypto.GenerateKey()
+	require.Nil(b, err)
+	did := consensus.EcdsaPubkeyToDid(treeKey.PublicKey)
+
+	tree, err := consensus.NewEmptyTree(ctx, did, store).SetAsLink(ctx, []string{"tree", "data", ".wellKnown", "policies"}, policies)
+	require.Nil(b, err)
+
+	abr := testhelpers.NewValidTransactionWithPathAndValue(b, treeKey, "a/different/path", "value")
+	block, err := blockWithHeadersFromAbr(&abr)
+	require.Nil(b, err)
+
+	var valid bool
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		valid, err = PolicyValidator(tree, block)
+	}
+	b.StopTimer()
+	require.Nil(b, err)
+	require.True(b, valid)
 }
