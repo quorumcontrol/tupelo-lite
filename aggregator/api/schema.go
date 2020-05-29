@@ -20,9 +20,9 @@ type ResolvePayload {
 	touchedBlocks: [Block!]
 }
 
-type BlocksPayload {
-	blocks: [Block!]!
-}
+#type BlocksPayload {
+#	blocks: [Block!]!
+#}
 
 input ResolveInput {
 	did: String!
@@ -33,13 +33,13 @@ input AddBlockInput {
   addBlockRequest: String! # The serialized protobuf as base64
 }
 
-input BlocksInput {
-	ids: [String!]!
-}
+#input BlocksInput {
+#	ids: [String!]!
+#}
 
 type Query {
   resolve(input:ResolveInput!):ResolvePayload
-  blocks(input: BlocksInput!):BlocksPayload!
+  #blocks(input: BlocksInput!):BlocksPayload!
 }
 
 type Mutation {

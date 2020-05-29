@@ -102,37 +102,37 @@ export class Client {
         }
     }
 
-    async get(cid: CID): Promise<IBlock> {
-        log(`get ${cid.toBaseEncodedString()}`)
-        try {
-            const resp = await this.apollo.query({
-                query: gql`
-                    query blocks($ids: [String!]!) {
-                        blocks(input: {ids: $ids}) {
-                            blocks {
-                                cid
-                                data
-                            }
-                        }
-                    }
-                `,
-                variables: {
-                    ids: [cid.toBaseEncodedString()]
-                },
-            })
-            if (resp.errors) {
-                console.error("graphql errors: ", resp.errors)
-                throw new Error("errors: " + resp.errors.toString())
-            }
+    // async get(cid: CID): Promise<IBlock> {
+    //     log(`get ${cid.toBaseEncodedString()}`)
+    //     try {
+    //         const resp = await this.apollo.query({
+    //             query: gql`
+    //                 query blocks($ids: [String!]!) {
+    //                     blocks(input: {ids: $ids}) {
+    //                         blocks {
+    //                             cid
+    //                             data
+    //                         }
+    //                     }
+    //                 }
+    //             `,
+    //             variables: {
+    //                 ids: [cid.toBaseEncodedString()]
+    //             },
+    //         })
+    //         if (resp.errors) {
+    //             console.error("graphql errors: ", resp.errors)
+    //             throw new Error("errors: " + resp.errors.toString())
+    //         }
     
-            const blocks = await graphQLtoBlocks(resp.data.blocks.blocks)
-            log(`get returning ${cid.toBaseEncodedString()}`, blocks)
-            return blocks[0]
-        } catch(err) {
-            log("graphql error: ", err)
-            throw err
-        }
-    }
+    //         const blocks = await graphQLtoBlocks(resp.data.blocks.blocks)
+    //         log(`get returning ${cid.toBaseEncodedString()}`, blocks)
+    //         return blocks[0]
+    //     } catch(err) {
+    //         log("graphql error: ", err)
+    //         throw err
+    //     }
+    // }
 
     async resolve(did:string, path:string, opts?:IResolveOptions):Promise<IClientResolveResponse> {
         log(`resolve did: ${did} ${path}`)

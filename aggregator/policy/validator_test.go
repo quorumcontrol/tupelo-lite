@@ -47,7 +47,7 @@ func TestBasicPolicy(t *testing.T) {
 		abr := testhelpers.NewValidTransactionWithPathAndValue(t, treeKey, "a/different/path", "value")
 		block, err := blockWithHeadersFromAbr(&abr)
 		require.Nil(t, err)
-		valid, err := PolicyValidator(tree, block)
+		valid, err := Validator(tree, block)
 		require.Nil(t, err)
 		require.True(t, valid)
 	})
@@ -56,7 +56,7 @@ func TestBasicPolicy(t *testing.T) {
 		abr := testhelpers.NewValidTransactionWithPathAndValue(t, treeKey, ".wellKnown/policies", "value")
 		block, err := blockWithHeadersFromAbr(&abr)
 		require.Nil(t, err)
-		valid, err := PolicyValidator(tree, block)
+		valid, err := Validator(tree, block)
 		require.Nil(t, err)
 		require.False(t, valid)
 	})
@@ -93,14 +93,14 @@ func TestPolicyWithWants(t *testing.T) {
 	abr := testhelpers.NewValidTransactionWithPathAndValue(t, treeKey, "no-matter", "here")
 	block, err := blockWithHeadersFromAbr(&abr)
 	require.Nil(t, err)
-	valid, err := PolicyValidator(tree, block)
+	valid, err := Validator(tree, block)
 	require.Nil(t, err)
 	require.False(t, valid)
 
 	// but as soon as we set the link it works (meaning that the value of the path was passed in)
 	treeWithValue, err := tree.SetAsLink(ctx, []string{"tree", "data", "somePath"}, "helloWorld")
 	require.Nil(t, err)
-	valid, err = PolicyValidator(treeWithValue, block)
+	valid, err = Validator(treeWithValue, block)
 	require.Nil(t, err)
 	require.True(t, valid)
 }
@@ -137,7 +137,7 @@ func BenchmarkPolicyExecution(b *testing.B) {
 	var valid bool
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		valid, err = PolicyValidator(tree, block)
+		valid, err = Validator(tree, block)
 	}
 	b.StopTimer()
 	require.Nil(b, err)

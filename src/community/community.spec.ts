@@ -5,6 +5,7 @@ import { Community, localURL } from './community'
 import { EcdsaKey } from '../ecdsa'
 import { ChainTree, setDataTransaction } from '../chaintree'
 import { reporters } from 'mocha'
+import { PolicyTree } from './policytree'
 
 
 describe('Community', () => {
@@ -13,7 +14,7 @@ describe('Community', () => {
         const c = new Community(localURL, r)
 
         const key = EcdsaKey.generate()
-        const tree = await ChainTree.newEmptyTree(c.blockservice, key)
+        const tree = await c.newEmptyTree(key)
         const id = await tree.id()
         if (id == null) {
             throw new Error("error getting id")
@@ -31,7 +32,7 @@ describe('Community', () => {
         const trans = [setDataTransaction("/test", "oh really")]
 
         const key = EcdsaKey.generate()
-        const tree = await ChainTree.newEmptyTree(c.blockservice, key)
+        const tree = await c.newEmptyTree(key)
         await c.playTransactions(tree, trans)
 
         expect((await tree.resolveData('test')).value).to.equal('oh really')
@@ -45,7 +46,7 @@ describe('Community', () => {
         const trans = [setDataTransaction("/test", "oh really")]
 
         const key = EcdsaKey.generate()
-        const tree = await ChainTree.newEmptyTree(c.blockservice, key)
+        const tree = await c.newEmptyTree(key)
         await c.playTransactions(tree, trans)
 
         const newTree = await c.getLatest(key.toDid())
@@ -63,7 +64,7 @@ describe('Community', () => {
         const trans = [setDataTransaction("/test", "oh really")]
 
         const key = EcdsaKey.generate()
-        const tree = await ChainTree.newEmptyTree(c.blockservice, key)
+        const tree = await c.newEmptyTree(key)
         await c.playTransactions(tree, trans)
 
         const newTree = await c2.getLatest(key.toDid())

@@ -1,6 +1,7 @@
 import { IKey } from '../chaintree/datastore';
 const IpfsRepo: any = require('ipfs-repo');
 const MemoryDatastore: any = require('interface-datastore').MemoryDatastore;
+const IpfsBlockService: any = require('ipfs-block-service');
 
 interface IStorageBackendOpts {
     root: any
@@ -71,6 +72,10 @@ export class Repo {
 
     query(query: IQuery) {
         return this.repo.datastore.query(query)
+    }
+
+    toBlockservice() {
+        return new IpfsBlockService(this.repo)
     }
 
     static memoryRepo = async (name: string) => {

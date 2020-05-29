@@ -1,11 +1,12 @@
 import debug from 'debug'
 import { Client,updateChainTreeWithResponse } from '../client'
 import { Repo } from '../repo'
-import { BlockService } from './blockservice'
 import { ChainTree, IBlockService } from '../chaintree'
 import { Transaction } from 'tupelo-messages/transactions/transactions_pb'
 import CID from 'cids'
 import { AddBlockRequest } from 'tupelo-messages/services/services_pb'
+import { PolicyTree } from './policytree'
+import { EcdsaKey } from '../ecdsa'
 
 const log = debug('community')
 
@@ -14,17 +15,32 @@ export const localURL = "http://localhost:9011/graphql"
 let _defaultPromise:Promise<Community>
 
 export class Community {
-    private client:Client
+    client:Client
     repo:Repo
     blockservice:IBlockService
 
     constructor(url:string, repo:Repo) {
         this.client = new Client(url)
         this.repo = repo
-        this.blockservice = new BlockService(this.client,repo)
+        this.blockservice = repo.toBlockservice()
     }
 
-    async playTransactions(tree:ChainTree, trans:Transaction[]) {
+    async newEmptyTree(key: EcdsaKey) {
+        const tree = await ChainTree.newEmptyTree(this.blockservice, key)
+        return new PolicyTree({
+            store: this.blockservice,
+            client: this.client,
+            tip: tree.tip,
+            key: tree.key,
+        })
+    }
+
+    async createRandom() {
+        const key = EcdsaKey.generate()
+        return this.newEmptyTree(key)
+    }
+
+    async playTransactions(tree:PolicyTree, trans:Transaction[]) {
         try {
             log("playTransactions: ", tree)
             let did:string
@@ -75,11 +91,12 @@ export class Community {
         throw new Error("errors: " + resp.errors.toString())
     }
 
-    async getLatest(did:string):Promise<ChainTree> {
+    async getLatest(did:string):Promise<PolicyTree> {
         try {
             const tip = await this.getTip(did)
             log(`getLatest ${did}: ${tip.toBaseEncodedString()}`)
-            return new ChainTree({
+            return new PolicyTree({
+                client: this.client,
                 tip: tip,
                 store: this.blockservice,
             })
