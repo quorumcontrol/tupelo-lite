@@ -68,38 +68,38 @@ type AddBlockPayload struct {
 	NewBlocks *[]Block
 }
 
-type BlocksPayload struct {
-	Blocks []Block
-}
+// type BlocksPayload struct {
+// 	Blocks []Block
+// }
 
-type BlocksInput struct {
-	Input struct {
-		Ids []string
-	}
-}
+// type BlocksInput struct {
+// 	Input struct {
+// 		Ids []string
+// 	}
+// }
 
-func (r *Resolver) Blocks(ctx context.Context, args BlocksInput) (*BlocksPayload, error) {
-	stringIds := args.Input.Ids
-	ids := make([]cid.Cid, len(stringIds))
-	for i, stringId := range stringIds {
-		id, err := cid.Decode(stringId)
-		if err != nil {
-			return nil, fmt.Errorf("error getting CID: %w", err)
-		}
-		ids[i] = id
-	}
-	blockCh := r.Aggregator.GetMany(ctx, ids)
-	blocks := make([]format.Node, len(stringIds))
-	i := 0
-	for nodeOption := range blockCh {
-		if nodeOption.Err != nil {
-			return nil, fmt.Errorf("error fetching: %w", nodeOption.Err)
-		}
-		blocks[i] = nodeOption.Node
-		i++
-	}
-	return &BlocksPayload{Blocks: blocksToGraphQLBlocks(blocks)}, nil
-}
+// func (r *Resolver) Blocks(ctx context.Context, args BlocksInput) (*BlocksPayload, error) {
+// 	stringIds := args.Input.Ids
+// 	ids := make([]cid.Cid, len(stringIds))
+// 	for i, stringId := range stringIds {
+// 		id, err := cid.Decode(stringId)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("error getting CID: %w", err)
+// 		}
+// 		ids[i] = id
+// 	}
+// 	blockCh := r.Aggregator.GetMany(ctx, ids)
+// 	blocks := make([]format.Node, len(stringIds))
+// 	i := 0
+// 	for nodeOption := range blockCh {
+// 		if nodeOption.Err != nil {
+// 			return nil, fmt.Errorf("error fetching: %w", nodeOption.Err)
+// 		}
+// 		blocks[i] = nodeOption.Node
+// 		i++
+// 	}
+// 	return &BlocksPayload{Blocks: blocksToGraphQLBlocks(blocks)}, nil
+// }
 
 func (r *Resolver) Resolve(ctx context.Context, input ResolveInput) (*ResolvePayload, error) {
 	logger.Infof("resolving %s %s", input.Input.Did, input.Input.Path)
