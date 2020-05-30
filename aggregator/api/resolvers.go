@@ -2,11 +2,13 @@ package api
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/base64"
 	"fmt"
 	"log"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	logging "github.com/ipfs/go-log"
 
 	"github.com/graph-gophers/graphql-go"
@@ -22,7 +24,15 @@ import (
 
 var logger = logging.Logger("resolver")
 
+var identityKey = datastore.NewKey("resolver/identity/key")
+
+type Identity struct {
+	Key *ecdsa.PrivateKey
+	Did string
+}
+
 type Resolver struct {
+	Identity   *Identity
 	Aggregator *aggregator.Aggregator
 }
 
@@ -33,9 +43,35 @@ func NewResolver(ctx context.Context, ds datastore.Batching) (*Resolver, error) 
 		return nil, fmt.Errorf("error creating aggregator: %w", err)
 	}
 	ng.DagGetter = agg
+	key, err := findOrCreateKey(ds)
+	if err != nil {
+		return nil, fmt.Errorf("error getting key: %w", err)
+	}
 	return &Resolver{
+		Identity: &Identity{
+			Key: key,
+		},
 		Aggregator: agg,
 	}, nil
+}
+
+func findOrCreateKey(ds datastore.Batching) (*ecdsa.PrivateKey, error) {
+	keyBits, err := ds.Get(identityKey)
+	if err != nil && err != datastore.ErrNotFound {
+		return nil, fmt.Errorf("error getting key: %w", err)
+	}
+	if err == datastore.ErrNotFound {
+		newKey, err := crypto.GenerateKey()
+		if err != nil {
+			return nil, fmt.Errorf("error generating key: %w", err)
+		}
+		err = ds.Put(identityKey, crypto.FromECDSA(newKey))
+		if err != nil {
+			return nil, fmt.Errorf("error putting key: %w", err)
+		}
+		return newKey, nil
+	}
+	return crypto.ToECDSA(keyBits)
 }
 
 type ResolveInput struct {
@@ -68,38 +104,25 @@ type AddBlockPayload struct {
 	NewBlocks *[]Block
 }
 
-// type BlocksPayload struct {
-// 	Blocks []Block
-// }
+type ChallengePayload struct {
+	Challenge string // base64 cbor
+}
 
-// type BlocksInput struct {
-// 	Input struct {
-// 		Ids []string
-// 	}
-// }
+func (r *Resolver) Challenge(ctx context.Context) (resp ChallengePayload, err error) {
+	chal, err := NewChallenge(r.Identity.Key)
+	if err != nil {
+		return ChallengePayload{Challenge: ""}, fmt.Errorf("error getting challenge: %w", err)
+	}
 
-// func (r *Resolver) Blocks(ctx context.Context, args BlocksInput) (*BlocksPayload, error) {
-// 	stringIds := args.Input.Ids
-// 	ids := make([]cid.Cid, len(stringIds))
-// 	for i, stringId := range stringIds {
-// 		id, err := cid.Decode(stringId)
-// 		if err != nil {
-// 			return nil, fmt.Errorf("error getting CID: %w", err)
-// 		}
-// 		ids[i] = id
-// 	}
-// 	blockCh := r.Aggregator.GetMany(ctx, ids)
-// 	blocks := make([]format.Node, len(stringIds))
-// 	i := 0
-// 	for nodeOption := range blockCh {
-// 		if nodeOption.Err != nil {
-// 			return nil, fmt.Errorf("error fetching: %w", nodeOption.Err)
-// 		}
-// 		blocks[i] = nodeOption.Node
-// 		i++
-// 	}
-// 	return &BlocksPayload{Blocks: blocksToGraphQLBlocks(blocks)}, nil
-// }
+	str, err := chal.String()
+	if err != nil {
+		return ChallengePayload{Challenge: ""}, fmt.Errorf("error stringifying: %w", err)
+	}
+
+	return ChallengePayload{
+		Challenge: str,
+	}, nil
+}
 
 func (r *Resolver) Resolve(ctx context.Context, input ResolveInput) (*ResolvePayload, error) {
 	logger.Infof("resolving %s %s", input.Input.Did, input.Input.Path)

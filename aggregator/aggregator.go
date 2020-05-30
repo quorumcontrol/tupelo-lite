@@ -32,6 +32,8 @@ var CacheSize = 100
 // assert fulfills the interface at compile time
 var _ graftabledag.DagGetter = (*Aggregator)(nil)
 
+
+
 type AddResponse struct {
 	IsValid  bool
 	NewTip   cid.Cid

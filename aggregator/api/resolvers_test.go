@@ -15,48 +15,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// func TestGetBlocks(t *testing.T) {
-// 	ctx, cancel := context.WithCancel(context.Background())
-// 	defer cancel()
+func TestChallenge(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-// 	memStore := aggregator.NewMemoryStore()
-// 	dagStore, err := nodestore.FromDatastoreOffline(ctx, memStore)
-// 	require.Nil(t, err)
+	r, err := NewResolver(ctx, aggregator.NewMemoryStore())
+	require.Nil(t, err)
 
-// 	r, err := NewResolver(ctx, memStore)
-// 	require.Nil(t, err)
+	opts := []graphql.SchemaOpt{graphql.UseFieldResolvers()}
+	schema, err := graphql.ParseSchema(Schema, r, opts...)
+	require.Nil(t, err)
 
-// 	opts := []graphql.SchemaOpt{graphql.UseFieldResolvers()}
-// 	schema, err := graphql.ParseSchema(Schema, r, opts...)
-// 	require.Nil(t, err)
+	schemaResp := schema.Exec(ctx,
+		`query {
+			challenge {
+				challenge
+			}
+		}
+		`,
+		"",
+		nil,
+	)
+	require.Len(t, schemaResp.Errors, 0)
 
-// 	sw := &safewrap.SafeWrap{}
-// 	b1 := sw.WrapObject("block1")
-// 	b2 := sw.WrapObject("block2")
-// 	dagStore.AddMany(ctx, []format.Node{b1, b2})
+	type Response struct {
+		Challenge struct {
+			Challenge string `json:"challenge"`
+		} `json:"challenge"`
+	}
 
-// 	gqltesting.RunTests(t, []*gqltesting.Test{
-// 		{
-// 			Schema: schema,
-// 			Query: fmt.Sprintf(`
-// 			query {
-// 				blocks(input:{ids:["%s","%s"]}) {
-// 				  blocks {
-// 					cid
-// 				  }
-// 				}
-// 			  }
-// 			`, b1.Cid().String(), b2.Cid().String()),
-// 			ExpectedResult: fmt.Sprintf(`
-// 				{
-// 					"blocks":{"blocks":[{"cid": "%s"},{"cid":"%s"}]}
-// 				}
-// 			`, b1.Cid().String(), b2.Cid().String()),
-// 		},
-// 	})
-
-// }
-
+	resp := &Response{}
+	json.Unmarshal(schemaResp.Data, resp)
+	assert.Len(t, resp.Challenge.Challenge, 172)
+}
 func TestTouchedNodes(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
