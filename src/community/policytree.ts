@@ -1,7 +1,7 @@
 import { ChainTree, IChainTreeInitializer, IBlockService, IResolveOptions, IResolveResponse } from "../chaintree";
 import { EcdsaKey } from "../ecdsa";
 import CID from "cids";
-import { Client } from "../client";
+import { Client, graphQLtoBlocks } from "../client";
 
 
 export interface IPolicyTreeInitializer extends IChainTreeInitializer {
@@ -30,7 +30,8 @@ export class PolicyTree extends ChainTree {
         } catch (e) {
             if (e.message.includes("Not Found")) {
                 try {
-                    const clientResp = await this.client.resolve((await this.id())!, path, opts)
+                    const clientResp = await this.client.resolve((await this.id())!, path, {...opts, touchedBlocks: true})
+                    this.store.putMany(clientResp.touchedBlocks!)
                     return {
                         value: clientResp.value,
                         remainderPath: clientResp.remainderPath,
