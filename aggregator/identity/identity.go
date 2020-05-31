@@ -16,6 +16,8 @@ import (
 	"github.com/quorumcontrol/tupelo/sdk/gossip/types"
 )
 
+const IdentityHeaderField = "x-tupelo-id"
+
 func init() {
 	cbornode.RegisterCborType(Identity{})
 	typecaster.AddType(Identity{})
@@ -139,4 +141,12 @@ func FromString(base64EncodedString string) (*IdentityWithSignature, error) {
 	is := &IdentityWithSignature{}
 	err = cbornode.DecodeInto(bits, is)
 	return is, err
+}
+
+func FromHeader(headers map[string][]string) (*IdentityWithSignature, error) {
+	head, ok := headers[IdentityHeaderField]
+	if !ok {
+		return nil, nil
+	}
+	return FromString(head[0])
 }

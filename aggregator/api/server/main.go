@@ -12,6 +12,7 @@ import (
 	"github.com/graph-gophers/graphql-go/relay"
 	"github.com/quorumcontrol/tupelo-lite/aggregator"
 	"github.com/quorumcontrol/tupelo-lite/aggregator/api"
+	"github.com/quorumcontrol/tupelo-lite/aggregator/identity"
 )
 
 func CorsMiddleware(next http.Handler) http.Handler {
@@ -24,6 +25,18 @@ func CorsMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r)
+	})
+}
+
+func IdentityMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id, err := identity.FromHeader(r.Header)
+		if err != nil {
+			w.WriteHeader(500)
+			return
+		}
+		newR := r.WithContext(context.WithValue(r.Context(), api.IdentityContextKey, id))
+		next.ServeHTTP(w, newR)
 	})
 }
 
@@ -41,10 +54,10 @@ func main() {
 	opts := []graphql.SchemaOpt{graphql.UseFieldResolvers(), graphql.MaxParallelism(20)}
 	schema := graphql.MustParseSchema(api.Schema, r, opts...)
 
-	http.Handle("/", CorsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	http.Handle("/", CorsMiddleware(IdentityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("rendering igraphql")
 		w.Write(page)
-	})))
+	}))))
 
 	http.Handle("/graphql", CorsMiddleware(&relay.Handler{Schema: schema}))
 

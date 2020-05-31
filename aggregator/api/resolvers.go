@@ -2,13 +2,11 @@ package api
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"encoding/base64"
 	"fmt"
 	"log"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	logging "github.com/ipfs/go-log"
 
 	"github.com/graph-gophers/graphql-go"
@@ -18,21 +16,17 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/quorumcontrol/messages/v2/build/go/services"
 	"github.com/quorumcontrol/tupelo-lite/aggregator"
+	"github.com/quorumcontrol/tupelo-lite/aggregator/identity"
+	"github.com/quorumcontrol/tupelo-lite/aggregator/policy"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/types"
 	"github.com/quorumcontrol/tupelo/sdk/reftracking"
 )
 
+const IdentityContextKey = "tupelo-lite:identity"
+
 var logger = logging.Logger("resolver")
 
-var identityKey = datastore.NewKey("resolver/identity/key")
-
-type Identity struct {
-	Key *ecdsa.PrivateKey
-	Did string
-}
-
 type Resolver struct {
-	Identity   *Identity
 	Aggregator *aggregator.Aggregator
 }
 
@@ -43,35 +37,9 @@ func NewResolver(ctx context.Context, ds datastore.Batching) (*Resolver, error) 
 		return nil, fmt.Errorf("error creating aggregator: %w", err)
 	}
 	ng.DagGetter = agg
-	key, err := findOrCreateKey(ds)
-	if err != nil {
-		return nil, fmt.Errorf("error getting key: %w", err)
-	}
 	return &Resolver{
-		Identity: &Identity{
-			Key: key,
-		},
 		Aggregator: agg,
 	}, nil
-}
-
-func findOrCreateKey(ds datastore.Batching) (*ecdsa.PrivateKey, error) {
-	keyBits, err := ds.Get(identityKey)
-	if err != nil && err != datastore.ErrNotFound {
-		return nil, fmt.Errorf("error getting key: %w", err)
-	}
-	if err == datastore.ErrNotFound {
-		newKey, err := crypto.GenerateKey()
-		if err != nil {
-			return nil, fmt.Errorf("error generating key: %w", err)
-		}
-		err = ds.Put(identityKey, crypto.FromECDSA(newKey))
-		if err != nil {
-			return nil, fmt.Errorf("error putting key: %w", err)
-		}
-		return newKey, nil
-	}
-	return crypto.ToECDSA(keyBits)
 }
 
 type ResolveInput struct {
@@ -104,6 +72,17 @@ type AddBlockPayload struct {
 	NewBlocks *[]Block
 }
 
+func requesterFromCtx(ctx context.Context) *identity.Identity {
+	var requester *identity.Identity
+	switch identityInter := ctx.Value(IdentityContextKey).(type) {
+	case *identity.Identity:
+		requester = identityInter
+	default:
+		requester = nil
+	}
+	return requester
+}
+
 func (r *Resolver) Resolve(ctx context.Context, input ResolveInput) (*ResolvePayload, error) {
 	logger.Infof("resolving %s %s", input.Input.Did, input.Input.Path)
 	path := strings.Split(strings.TrimPrefix(input.Input.Path, "/"), "/")
@@ -117,6 +96,18 @@ func (r *Resolver) Resolve(ctx context.Context, input ResolveInput) (*ResolvePay
 	if err != nil {
 		logger.Errorf("error getting latest %s %v", input.Input.Did, err)
 		return nil, fmt.Errorf("error getting latest: %w", err)
+	}
+
+	valid, err := policy.ReadValidator(ctx, latest.Dag, input.Input.Path, requesterFromCtx(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("error validating: %w", err)
+	}
+	if !valid {
+		// if not valid then just return as if it was not found
+
+		return &ResolvePayload{
+			RemainingPath: path,
+		}, nil
 	}
 
 	trackedTree, tracker, err := reftracking.WrapTree(ctx, latest)

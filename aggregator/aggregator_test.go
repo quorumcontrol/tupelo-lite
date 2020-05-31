@@ -93,7 +93,7 @@ func TestGetLatest(t *testing.T) {
 		treeKey, err := crypto.GenerateKey()
 		require.Nil(t, err)
 
-		abr1 := testhelpers.NewValidTransactionWithPathAndValue(t, treeKey, "/.wellKnown/policy",
+		abr1 := testhelpers.NewValidTransactionWithPathAndValue(t, treeKey, "/.well-known/policy",
 			`package example.authz
 
 default allow = false
@@ -108,7 +108,7 @@ allow {
 		tree, err := agg.GetLatest(ctx, string(abr1.ObjectId))
 		require.Nil(t, err)
 
-		_, remain, err := tree.Dag.Resolve(ctx, []string{"tree", "data", ".wellKnown", "policy"})
+		_, remain, err := tree.Dag.Resolve(ctx, []string{"tree", "data", ".well-known", "policy"})
 		require.Nil(t, err)
 		assert.Len(t, remain, 0)
 		// assert.Equal(t, "value", resp)
@@ -127,7 +127,7 @@ func BenchmarkSimplePolicy(b *testing.B) {
 	treeKey, err := crypto.GenerateKey()
 	require.Nil(b, err)
 
-	abr1 := testhelpers.NewValidTransactionWithPathAndValue(b, treeKey, "/.wellKnown/policy",
+	abr1 := testhelpers.NewValidTransactionWithPathAndValue(b, treeKey, "/.well-known/policy",
 		`package example.authz
 
 default allow = false

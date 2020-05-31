@@ -31,7 +31,7 @@ func TestBasicReadPolicy(t *testing.T) {
 	require.Nil(t, err)
 	did := consensus.EcdsaPubkeyToDid(treeKey.PublicKey)
 
-	tree, err := consensus.NewEmptyTree(ctx, did, store).SetAsLink(ctx, []string{"tree", "data", ".wellKnown", "policies"}, policies)
+	tree, err := consensus.NewEmptyTree(ctx, did, store).SetAsLink(ctx, []string{"tree", "data", ".well-known", "policies"}, policies)
 	require.Nil(t, err)
 
 	id := &identity.Identity{

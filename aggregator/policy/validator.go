@@ -16,10 +16,10 @@ func errToCoded(err error) chaintree.CodedError {
 	return &consensus.ErrorCode{Memo: err.Error(), Code: consensus.ErrUnknown}
 }
 
-var policyPath = []string{"tree", "data", ".wellKnown", "policies"}
+var policyPath = []string{"tree", "data", ".well-known", "policies"}
 
 /*
-Validator looks at a ChainTree and if it contains policies at policyPath (tree/data/.wellKnown/policies)
+Validator looks at a ChainTree and if it contains policies at policyPath (tree/data/.well-known/policies)
 then it will evaluate that policy.
 
 See https://www.openpolicyagent.org/ for a complete language description
@@ -67,7 +67,7 @@ policies := map[string]string{
 			default allow = false
 
 			modifies_policy {
-			    contains(input.transactions[_].setDataPayload.path, ".wellKnown/policies")
+			    contains(input.transactions[_].setDataPayload.path, ".well-known/policies")
 			}
 
 			allow {

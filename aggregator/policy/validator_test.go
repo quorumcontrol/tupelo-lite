@@ -41,7 +41,7 @@ func TestBasicPolicy(t *testing.T) {
 	require.Nil(t, err)
 	did := consensus.EcdsaPubkeyToDid(treeKey.PublicKey)
 
-	tree, err := consensus.NewEmptyTree(ctx, did, store).SetAsLink(ctx, []string{"tree", "data", ".wellKnown", "policies"}, policies)
+	tree, err := consensus.NewEmptyTree(ctx, did, store).SetAsLink(ctx, []string{"tree", "data", ".well-known", "policies"}, policies)
 	require.Nil(t, err)
 	t.Run("works with a non-policy path", func(t *testing.T) {
 		abr := testhelpers.NewValidTransactionWithPathAndValue(t, treeKey, "a/different/path", "value")
@@ -53,7 +53,7 @@ func TestBasicPolicy(t *testing.T) {
 	})
 
 	t.Run("returns false when there's a policy in the path", func(t *testing.T) {
-		abr := testhelpers.NewValidTransactionWithPathAndValue(t, treeKey, ".wellKnown/policies", "value")
+		abr := testhelpers.NewValidTransactionWithPathAndValue(t, treeKey, ".well-known/policies", "value")
 		block, err := blockWithHeadersFromAbr(&abr)
 		require.Nil(t, err)
 		valid, err := Validator(tree, block)
@@ -86,7 +86,7 @@ func TestPolicyWithWants(t *testing.T) {
 	require.Nil(t, err)
 	did := consensus.EcdsaPubkeyToDid(treeKey.PublicKey)
 
-	tree, err := consensus.NewEmptyTree(ctx, did, store).SetAsLink(ctx, []string{"tree", "data", ".wellKnown", "policies"}, policies)
+	tree, err := consensus.NewEmptyTree(ctx, did, store).SetAsLink(ctx, []string{"tree", "data", ".well-known", "policies"}, policies)
 	require.Nil(t, err)
 
 	// test that the policy is false (but no error) when the path isn't set
@@ -127,7 +127,7 @@ func BenchmarkPolicyExecution(b *testing.B) {
 	require.Nil(b, err)
 	did := consensus.EcdsaPubkeyToDid(treeKey.PublicKey)
 
-	tree, err := consensus.NewEmptyTree(ctx, did, store).SetAsLink(ctx, []string{"tree", "data", ".wellKnown", "policies"}, policies)
+	tree, err := consensus.NewEmptyTree(ctx, did, store).SetAsLink(ctx, []string{"tree", "data", ".well-known", "policies"}, policies)
 	require.Nil(b, err)
 
 	abr := testhelpers.NewValidTransactionWithPathAndValue(b, treeKey, "a/different/path", "value")
