@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"encoding/base64"
 	"fmt"
@@ -9,7 +10,9 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	cbornode "github.com/ipfs/go-ipld-cbor"
 	format "github.com/ipfs/go-ipld-format"
+	"github.com/quorumcontrol/chaintree/graftabledag"
 	"github.com/quorumcontrol/chaintree/safewrap"
+	"github.com/quorumcontrol/tupelo/sdk/gossip/types"
 )
 
 func init() {
@@ -61,7 +64,7 @@ func (i *Identity) Sign(key *ecdsa.PrivateKey) (*IdentityWithSignature, error) {
 	}, nil
 }
 
-func (is *IdentityWithSignature) Verify() (bool, error) {
+func (is *IdentityWithSignature) Verify(ctx context.Context, getter graftabledag.DagGetter) (bool, error) {
 	sw := &safewrap.SafeWrap{}
 	wrapped := sw.WrapObject(is.Identity)
 	if sw.Err != nil {
@@ -78,9 +81,33 @@ func (is *IdentityWithSignature) Verify() (bool, error) {
 	}
 
 	now := time.Now().UTC().Unix()
-	fmt.Println("is verified: ", now, is.Identity.Exp)
 
-	return (is.Identity.Exp > now), nil
+	if now > is.Identity.Exp {
+		return false, nil
+	}
+	latest, err := getter.GetLatest(ctx, is.Sub)
+	if err != nil {
+		return false, fmt.Errorf("error getting latest: %w", err)
+	}
+	graftedOwnership, err := types.NewGraftedOwnership(latest.Dag, getter)
+	if err != nil {
+		return false, fmt.Errorf("error getting ownership: %w", err)
+	}
+
+	addrs, err := graftedOwnership.ResolveOwners(ctx)
+	if err != nil {
+		return false, fmt.Errorf("error resolving owners: %w", err)
+	}
+	identityAddr, err := is.Address()
+	if err != nil {
+		return false, fmt.Errorf("error getting addr: %w", err)
+	}
+	for _, addr := range addrs {
+		if addr == identityAddr {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (is *IdentityWithSignature) String() string {
