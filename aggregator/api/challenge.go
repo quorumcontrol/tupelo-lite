@@ -11,6 +11,7 @@ import (
 	"github.com/quorumcontrol/chaintree/safewrap"
 
 	cbornode "github.com/ipfs/go-ipld-cbor"
+	format "github.com/ipfs/go-ipld-format"
 )
 
 func init() {
@@ -32,6 +33,11 @@ type ChallengeWithSignature struct {
 	Signature []byte
 }
 
+func nodeToHash(node format.Node) []byte {
+	multiHash := []byte(node.Cid().Hash())
+	return multiHash[2:]
+}
+
 func NewChallenge(k *ecdsa.PrivateKey) (*ChallengeWithSignature, error) {
 	bits := make([]byte, 32) // 32 byte random bits
 	_, err := rand.Read(bits)
@@ -49,18 +55,28 @@ func NewChallenge(k *ecdsa.PrivateKey) (*ChallengeWithSignature, error) {
 	if sw.Err != nil {
 		return nil, fmt.Errorf("error wrapping: %w", sw.Err)
 	}
+	fmt.Println("singing: ", nodeToHash(wrapped))
 
-	multiHash := []byte(wrapped.Cid().Hash())
-
-	sig, err := crypto.Sign(multiHash[2:], k)
+	sig, err := crypto.Sign(nodeToHash(wrapped), k)
 	if err != nil {
 		return nil, fmt.Errorf("error signing: %w", err)
 	}
+	fmt.Println("sig: ", sig)
 
 	return &ChallengeWithSignature{
 		Challenge: challenge,
 		Signature: sig,
 	}, nil
+}
+
+func ChallengeFromString(base64EncodedString string) (*ChallengeWithSignature, error) {
+	bits, err := base64.StdEncoding.DecodeString(base64EncodedString)
+	if err != nil {
+		return nil, fmt.Errorf("error decoding: %v", err)
+	}
+	chal := &ChallengeWithSignature{}
+	err = cbornode.DecodeInto(bits, chal)
+	return chal, err
 }
 
 func (c ChallengeWithSignature) String() (string, error) {
@@ -70,4 +86,15 @@ func (c ChallengeWithSignature) String() (string, error) {
 		return "", fmt.Errorf("error wrapping: %w", sw.Err)
 	}
 	return base64.StdEncoding.EncodeToString(wrapped.RawData()), nil
+}
+
+func (c ChallengeWithSignature) Verify(key ecdsa.PublicKey) (bool, error) {
+	sw := &safewrap.SafeWrap{}
+	wrapped := sw.WrapObject(c.Challenge)
+	if sw.Err != nil {
+		return false, fmt.Errorf("error wrapping: %w", sw.Err)
+	}
+
+	verified := crypto.VerifySignature(crypto.FromECDSAPub(&key), nodeToHash(wrapped), c.Signature[:len(c.Signature)-1])
+	return verified, nil
 }
