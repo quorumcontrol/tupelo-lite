@@ -35,6 +35,53 @@ describe("Client", () => {
         repo.close()
     })
 
+    it('can use write policies', async ()=> {
+        const policies = {
+            "tupelo.nopolicychange": `
+                package tupelo.nopolicychange
+
+                default allow = false
+
+                modifies_policy {
+                    contains(input.transactions[_].setDataPayload.path, ".well-known/policies")
+                }
+
+                allow {
+                    not modifies_policy
+                }
+            `,
+            main: `
+                package main
+			    default allow = false
+
+			    allow {
+			    	data.tupelo.nopolicychange.allow
+			    }
+            `
+        }
+
+        let cli = new Client("http://localhost:9011/graphql")
+
+        const repo = await Repo.memoryRepo("write-policies")
+
+        const tree = await ChainTree.createRandom(new IpfsBlockService(repo.repo))
+        const abr = await tree.newAddBlockRequest([setDataTransaction(".well-known/policies", policies)])
+
+        const resp = await cli.addBlock(abr)
+        expect(resp.errors).to.be.undefined
+        expect(resp.valid).to.be.true
+        await updateChainTreeWithResponse(tree, resp)
+
+        // so now we should not be able to set change the policy
+        const abr2 = await tree.newAddBlockRequest([setDataTransaction(".well-known/policies", null)])
+
+        const resp2 = await cli.addBlock(abr2)
+        expect(resp2.errors).to.be.undefined
+        expect(resp2.valid).to.be.false
+        
+        repo.close()
+    })
+
     it('identifies', async () => {
         let cli = new Client("http://localhost:9011/graphql")
 
