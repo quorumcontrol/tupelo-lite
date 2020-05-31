@@ -12,13 +12,15 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/quorumcontrol/chaintree/graftabledag"
 	"github.com/quorumcontrol/chaintree/safewrap"
+	"github.com/quorumcontrol/chaintree/typecaster"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/types"
 )
 
 func init() {
 	cbornode.RegisterCborType(Identity{})
+	typecaster.AddType(Identity{})
 	cbornode.RegisterCborType(IdentityWithSignature{})
-
+	typecaster.AddType(IdentityWithSignature{})
 }
 
 // Unfortunately to use either JWT or HTTP Signature authorization would require going through
