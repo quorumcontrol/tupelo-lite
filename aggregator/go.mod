@@ -9,12 +9,10 @@ require (
 	github.com/ipfs/go-cid v0.0.5
 	github.com/ipfs/go-datastore v0.4.4
 	github.com/ipfs/go-ds-s3 v0.5.0
-	github.com/ipfs/go-hamt-ipld v0.0.13
 	github.com/ipfs/go-ipld-cbor v0.0.4
 	github.com/ipfs/go-ipld-format v0.2.0
 	github.com/ipfs/go-log v1.0.4
 	github.com/open-policy-agent/opa v0.20.4
-	github.com/opentracing/opentracing-go v1.1.0
 	github.com/quorumcontrol/chaintree v1.0.2-0.20200501142445-c20387b71253
 	github.com/quorumcontrol/go-ds-dynamodb v0.0.0-20200523131057-fad30d0593bb
 	github.com/quorumcontrol/messages/v2 v2.1.3-0.20200129115245-2bfec5177653

@@ -85,34 +85,6 @@ func TestGetLatest(t *testing.T) {
 		assert.Len(t, remain, 0)
 		assert.Equal(t, "value", resp)
 	})
-
-	t.Run("works with a policy", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		treeKey, err := crypto.GenerateKey()
-		require.Nil(t, err)
-
-		abr1 := testhelpers.NewValidTransactionWithPathAndValue(t, treeKey, "/.well-known/policy",
-			`package example.authz
-
-default allow = false
-
-allow {
-	input.method = "GET"
-}
-`)
-		_, err = agg.Add(ctx, &abr1)
-		require.Nil(t, err)
-
-		tree, err := agg.GetLatest(ctx, string(abr1.ObjectId))
-		require.Nil(t, err)
-
-		_, remain, err := tree.Dag.Resolve(ctx, []string{"tree", "data", ".well-known", "policy"})
-		require.Nil(t, err)
-		assert.Len(t, remain, 0)
-		// assert.Equal(t, "value", resp)
-	})
 }
 
 func BenchmarkSimplePolicy(b *testing.B) {
