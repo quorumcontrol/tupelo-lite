@@ -3,9 +3,7 @@ module github.com/quorumcontrol/tupelo-lite/aggregator
 go 1.14
 
 require (
-	cloud.google.com/go v0.37.0
 	github.com/aws/aws-lambda-go v1.17.0
-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/ethereum/go-ethereum v1.9.3
 	github.com/graph-gophers/graphql-go v0.0.0-20200309224638-dae41bde9ef9
 	github.com/ipfs/go-cid v0.0.5
@@ -21,5 +19,6 @@ require (
 	github.com/quorumcontrol/go-ds-dynamodb v0.0.0-20200523131057-fad30d0593bb
 	github.com/quorumcontrol/messages/v2 v2.1.3-0.20200129115245-2bfec5177653
 	github.com/quorumcontrol/tupelo v0.7.2-0.20200523064345-9250e46da3f4
+	github.com/stretchr/objx v0.2.0 // indirect
 	github.com/stretchr/testify v1.5.1
 )

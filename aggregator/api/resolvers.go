@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"log"
 	"strings"
 
-	"github.com/davecgh/go-spew/spew"
 	logging "github.com/ipfs/go-log"
 
 	"github.com/graph-gophers/graphql-go"
@@ -32,7 +30,10 @@ type Resolver struct {
 }
 
 func NewResolver(ctx context.Context, ds datastore.Batching) (*Resolver, error) {
-	ng := types.NewNotaryGroup("aggregator")
+	defaultConfig := types.DefaultConfig()
+	defaultConfig.ValidatorGenerators = append(defaultConfig.ValidatorGenerators, policy.ValidatorGenerator)
+	defaultConfig.ID = "aggregator"
+	ng := types.NewNotaryGroupFromConfig(defaultConfig)
 	agg, err := aggregator.NewAggregator(ctx, ds, ng)
 	if err != nil {
 		return nil, fmt.Errorf("error creating aggregator: %w", err)
@@ -79,7 +80,6 @@ func requesterFromCtx(ctx context.Context) *identity.Identity {
 	case identity.Identity:
 		requester = &identityInter
 	default:
-		logger.Debugf(spew.Sdump(identityInter))
 		requester = nil
 	}
 	return requester
@@ -166,7 +166,7 @@ func (r *Resolver) AddBlock(ctx context.Context, input AddBlockInput) (*AddBlock
 		return nil, fmt.Errorf("error unmarshaling %w", err)
 	}
 
-	log.Printf("addBlock %s", abr.ObjectId)
+	logger.Infof("addBlock %s", abr.ObjectId)
 
 	resp, err := r.Aggregator.Add(ctx, abr)
 	if err == aggregator.ErrInvalidBlock {

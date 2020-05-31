@@ -12,6 +12,7 @@ import (
 	"github.com/quorumcontrol/chaintree/dag"
 	"github.com/quorumcontrol/chaintree/typecaster"
 	"github.com/quorumcontrol/tupelo/sdk/consensus"
+	"github.com/quorumcontrol/tupelo/sdk/gossip/types"
 )
 
 var logger = logging.Logger("policy")
@@ -90,8 +91,7 @@ policies := map[string]string{
 
 
 */
-func Validator(tree *dag.Dag, blockWithHeaders *chaintree.BlockWithHeaders) (bool, chaintree.CodedError) {
-	ctx := context.TODO()
+func Validator(ctx context.Context, tree *dag.Dag, blockWithHeaders *chaintree.BlockWithHeaders) (bool, chaintree.CodedError) {
 	policies, remain, err := tree.Resolve(ctx, policyPath)
 	if err != nil {
 		return false, errToCoded(fmt.Errorf("error getting policy: %v", err))
@@ -187,4 +187,12 @@ func allowResult(results rego.ResultSet) (bool, chaintree.CodedError) {
 	}
 
 	return results[0].Bindings["allow"].(bool), nil
+}
+
+// ValidatorGenerator passes in the GlobalResolve from the ng so that that paths can be resolved where needed
+func ValidatorGenerator(ctx context.Context, ng *types.NotaryGroup) (chaintree.BlockValidatorFunc, error) {
+	var isOwnerValidator chaintree.BlockValidatorFunc = func(tree *dag.Dag, blockWithHeaders *chaintree.BlockWithHeaders) (bool, chaintree.CodedError) {
+		return Validator(ctx, tree, blockWithHeaders)
+	}
+	return isOwnerValidator, nil
 }
