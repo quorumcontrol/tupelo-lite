@@ -96,10 +96,11 @@ export class Client {
     }
 
     identify(did:string,key:EcdsaKey) {
+        const now = new Date()
         this.identity = {
             iss:did,
             sub: did,
-            iat: (new Date()).getTime(),
+            iat: now.getTime() + (now.getTimezoneOffset() * 60000),
         }
         this.key = key
     }
@@ -108,7 +109,9 @@ export class Client {
         if (!this.identity || !this.key) {
             return undefined
         }
-        const identity = {...this.identity, exp: (new Date()).getTime() + 10000}
+        const now = new Date()
+
+        const identity = {...this.identity, exp: now.getTime() + (now.getTimezoneOffset() * 60000) + 10000}
 
         const sigResp = await this.key.signObject(identity)
         return {...this.identity, signature: sigResp.signature}
