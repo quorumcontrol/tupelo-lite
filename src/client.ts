@@ -108,8 +108,9 @@ export class Client {
         if (!this.identity || !this.key) {
             return undefined
         }
+        const identity = {...this.identity, exp: (new Date()).getTime() + 10000}
 
-        const sigResp = await this.key.signObject(this.identity)
+        const sigResp = await this.key.signObject(identity)
         return {...this.identity, signature: sigResp.signature}
     }
 
