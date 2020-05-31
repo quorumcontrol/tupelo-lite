@@ -104,26 +104,6 @@ type AddBlockPayload struct {
 	NewBlocks *[]Block
 }
 
-type ChallengePayload struct {
-	Challenge string // base64 cbor
-}
-
-func (r *Resolver) Challenge(ctx context.Context) (resp ChallengePayload, err error) {
-	chal, err := NewChallenge(r.Identity.Key)
-	if err != nil {
-		return ChallengePayload{Challenge: ""}, fmt.Errorf("error getting challenge: %w", err)
-	}
-
-	str, err := chal.String()
-	if err != nil {
-		return ChallengePayload{Challenge: ""}, fmt.Errorf("error stringifying: %w", err)
-	}
-
-	return ChallengePayload{
-		Challenge: str,
-	}, nil
-}
-
 func (r *Resolver) Resolve(ctx context.Context, input ResolveInput) (*ResolvePayload, error) {
 	logger.Infof("resolving %s %s", input.Input.Did, input.Input.Path)
 	path := strings.Split(strings.TrimPrefix(input.Input.Path, "/"), "/")

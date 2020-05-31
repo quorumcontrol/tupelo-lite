@@ -20,10 +20,6 @@ type ResolvePayload {
 	touchedBlocks: [Block!]
 }
 
-type ChallengePayload {
-	challenge: String!
-}
-
 input ResolveInput {
 	did: String!
 	path: String!
@@ -35,7 +31,6 @@ input AddBlockInput {
 
 type Query {
   resolve(input:ResolveInput!):ResolvePayload
-  challenge: ChallengePayload!
 }
 
 type Mutation {

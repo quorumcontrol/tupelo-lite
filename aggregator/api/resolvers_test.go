@@ -15,39 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestChallenge(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	r, err := NewResolver(ctx, aggregator.NewMemoryStore())
-	require.Nil(t, err)
-
-	opts := []graphql.SchemaOpt{graphql.UseFieldResolvers()}
-	schema, err := graphql.ParseSchema(Schema, r, opts...)
-	require.Nil(t, err)
-
-	schemaResp := schema.Exec(ctx,
-		`query {
-			challenge {
-				challenge
-			}
-		}
-		`,
-		"",
-		nil,
-	)
-	require.Len(t, schemaResp.Errors, 0)
-
-	type Response struct {
-		Challenge struct {
-			Challenge string `json:"challenge"`
-		} `json:"challenge"`
-	}
-
-	resp := &Response{}
-	json.Unmarshal(schemaResp.Data, resp)
-	assert.Len(t, resp.Challenge.Challenge, 172)
-}
 func TestTouchedNodes(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
