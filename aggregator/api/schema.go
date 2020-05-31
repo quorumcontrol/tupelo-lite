@@ -34,7 +34,6 @@ type Query {
 }
 
 type Mutation {
-  # This mutation takes id and email parameters and responds with a User
   addBlock(input:AddBlockInput!):AddBlockPayload
 }
 `

@@ -48,11 +48,8 @@ func IdentityMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
-	logging.SetLogLevel("aggregator", "debug")
-	logging.SetLogLevel("resolver", "debug")
-	logging.SetLogLevel("policy", "debug")
-	logging.SetLogLevel("server", "debug")
-	logging.SetLogLevel("identity", "debug")
+	logging.SetLogLevel("*", "info")
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

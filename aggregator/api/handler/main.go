@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 
@@ -15,6 +16,7 @@ import (
 	dynamods "github.com/quorumcontrol/go-ds-dynamodb"
 	"github.com/quorumcontrol/tupelo-lite/aggregator"
 	"github.com/quorumcontrol/tupelo-lite/aggregator/api"
+	"github.com/quorumcontrol/tupelo-lite/aggregator/identity"
 )
 
 var (
@@ -23,7 +25,7 @@ var (
 	mainSchema           *graphql.Schema
 )
 
-func Handler(context context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	log.Printf("Processing Lambda request %s\n", request.RequestContext.RequestID)
 	if request.HTTPMethod == "OPTIONS" { // not sure why we need this and the "cors:true" on the serverless isn't handling it
 		return events.APIGatewayProxyResponse{
@@ -57,9 +59,27 @@ func Handler(context context.Context, request events.APIGatewayProxyRequest) (ev
 
 	if err := json.Unmarshal([]byte(request.Body), &params); err != nil {
 		log.Print("Could not decode body", err)
+		return events.APIGatewayProxyResponse{
+			Body:       "could not decode body",
+			StatusCode: 500,
+		}, nil
 	}
 
-	response := mainSchema.Exec(context, params.Query, params.OperationName, params.Variables)
+	header, ok := request.Headers[identity.IdentityHeaderField]
+	if ok {
+		ident, err := identity.FromHeader(map[string][]string{identity.IdentityHeaderField: {header}})
+		if err != nil {
+			log.Print("Could not get identity", err)
+			return events.APIGatewayProxyResponse{
+				Body:       fmt.Sprintf("could not decode: %v", err),
+				StatusCode: 500,
+			}, nil
+		}
+
+		ctx = context.WithValue(ctx, api.IdentityContextKey, ident)
+	}
+
+	response := mainSchema.Exec(ctx, params.Query, params.OperationName, params.Variables)
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
 		log.Print("Could not decode body")
