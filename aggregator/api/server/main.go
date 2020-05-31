@@ -15,6 +15,8 @@ import (
 	"github.com/quorumcontrol/tupelo-lite/aggregator/identity"
 )
 
+var logger = logging.Logger("server")
+
 func CorsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// allow cross domain AJAX requests
@@ -35,14 +37,22 @@ func IdentityMiddleware(next http.Handler) http.Handler {
 			w.WriteHeader(500)
 			return
 		}
-		newR := r.WithContext(context.WithValue(r.Context(), api.IdentityContextKey, id))
-		next.ServeHTTP(w, newR)
+		logger.Debugf("id: %v", id)
+		if id != nil {
+			newR := r.WithContext(context.WithValue(r.Context(), api.IdentityContextKey, id.Identity))
+			next.ServeHTTP(w, newR)
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
 func main() {
 	logging.SetLogLevel("aggregator", "debug")
-	logging.SetLogLevel("resolvers", "debug")
+	logging.SetLogLevel("resolver", "debug")
+	logging.SetLogLevel("policy", "debug")
+	logging.SetLogLevel("server", "debug")
+	logging.SetLogLevel("identity", "debug")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -59,7 +69,7 @@ func main() {
 		w.Write(page)
 	}))))
 
-	http.Handle("/graphql", CorsMiddleware(&relay.Handler{Schema: schema}))
+	http.Handle("/graphql", CorsMiddleware(IdentityMiddleware((&relay.Handler{Schema: schema}))))
 
 	fmt.Println("running on port 9011 path: /graphql")
 	log.Fatal(http.ListenAndServe(":9011", nil))

@@ -30,6 +30,8 @@ func ReadValidator(ctx context.Context, tree *dag.Dag, path string, identity *id
 		return true, nil
 	}
 
+	logger.Debugf("policies are present, evaluating: %s, identity: %v", path, identity)
+
 	// otherwise we have a policy map and we should evaluate
 
 	policyMap, ok := policies.(map[string]interface{})
@@ -42,6 +44,7 @@ func ReadValidator(ctx context.Context, tree *dag.Dag, path string, identity *id
 		// if there is no read policy then just allow
 		return true, nil
 	}
+	logger.Debugf("has read policy")
 
 	var modules []func(*rego.Rego)
 

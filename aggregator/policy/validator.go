@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"strings"
 
+	logging "github.com/ipfs/go-log"
+
 	"github.com/open-policy-agent/opa/rego"
 	"github.com/quorumcontrol/chaintree/chaintree"
 	"github.com/quorumcontrol/chaintree/dag"
 	"github.com/quorumcontrol/chaintree/typecaster"
 	"github.com/quorumcontrol/tupelo/sdk/consensus"
 )
+
+var logger = logging.Logger("policy")
 
 func errToCoded(err error) chaintree.CodedError {
 	return &consensus.ErrorCode{Memo: err.Error(), Code: consensus.ErrUnknown}

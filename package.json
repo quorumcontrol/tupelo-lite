@@ -12,6 +12,7 @@
   "license": "UNLICENSED",
   "dependencies": {
     "@apollo/client": "^3.0.0-beta.48",
+    "@apollo/link-context": "^2.0.0-beta.3",
     "@types/debug": "^4.1.5",
     "@types/graphql-type-json": "^0.3.2",
     "@types/pbkdf2": "^3.0.0",

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	logging "github.com/ipfs/go-log"
+
 	"github.com/ethereum/go-ethereum/crypto"
 	cbornode "github.com/ipfs/go-ipld-cbor"
 	format "github.com/ipfs/go-ipld-format"
@@ -16,7 +18,9 @@ import (
 	"github.com/quorumcontrol/tupelo/sdk/gossip/types"
 )
 
-const IdentityHeaderField = "x-tupelo-id"
+var logger = logging.Logger("identity")
+
+const IdentityHeaderField = "X-Tupelo-Id"
 
 func init() {
 	cbornode.RegisterCborType(Identity{})
@@ -144,8 +148,12 @@ func FromString(base64EncodedString string) (*IdentityWithSignature, error) {
 }
 
 func FromHeader(headers map[string][]string) (*IdentityWithSignature, error) {
+	logger.Debugf("headers: %v", headers)
 	head, ok := headers[IdentityHeaderField]
 	if !ok {
+		return nil, nil
+	}
+	if head[0] == "" {
 		return nil, nil
 	}
 	return FromString(head[0])

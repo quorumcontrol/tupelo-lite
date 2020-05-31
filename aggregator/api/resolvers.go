@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/davecgh/go-spew/spew"
 	logging "github.com/ipfs/go-log"
 
 	"github.com/graph-gophers/graphql-go"
@@ -75,17 +76,20 @@ type AddBlockPayload struct {
 func requesterFromCtx(ctx context.Context) *identity.Identity {
 	var requester *identity.Identity
 	switch identityInter := ctx.Value(IdentityContextKey).(type) {
-	case *identity.Identity:
-		requester = identityInter
+	case identity.Identity:
+		requester = &identityInter
 	default:
+		logger.Debugf(spew.Sdump(identityInter))
 		requester = nil
 	}
 	return requester
 }
 
 func (r *Resolver) Resolve(ctx context.Context, input ResolveInput) (*ResolvePayload, error) {
-	logger.Infof("resolving %s %s", input.Input.Did, input.Input.Path)
+	requester := requesterFromCtx(ctx)
+	logger.Infof("resolving %s %s with requester %v", input.Input.Did, input.Input.Path, requester)
 	path := strings.Split(strings.TrimPrefix(input.Input.Path, "/"), "/")
+
 	latest, err := r.Aggregator.GetLatest(ctx, input.Input.Did)
 	if err == aggregator.ErrNotFound {
 		logger.Debugf("resolve %s not found", input.Input.Did)
@@ -98,10 +102,11 @@ func (r *Resolver) Resolve(ctx context.Context, input ResolveInput) (*ResolvePay
 		return nil, fmt.Errorf("error getting latest: %w", err)
 	}
 
-	valid, err := policy.ReadValidator(ctx, latest.Dag, input.Input.Path, requesterFromCtx(ctx))
+	valid, err := policy.ReadValidator(ctx, latest.Dag, strings.Join(path, "/"), requester)
 	if err != nil {
 		return nil, fmt.Errorf("error validating: %w", err)
 	}
+	logger.Debugf("readValidator: %v", valid)
 	if !valid {
 		// if not valid then just return as if it was not found
 

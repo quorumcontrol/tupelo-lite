@@ -1,14 +1,18 @@
-import {ApolloClient, HttpLink, gql} from '@apollo/client'
+import {ApolloClient, HttpLink, gql, throwServerError} from '@apollo/client'
 import { InMemoryCache } from '@apollo/client/cache';
 import { AddBlockRequest } from 'tupelo-messages';
 import fetch from 'cross-fetch'
 import { ChainTree, IBlock,IResolveOptions } from './chaintree';
 import CID from 'cids';
 import debug from 'debug';
+import { setContext } from '@apollo/link-context';
+import { EcdsaKey } from './ecdsa';
+
 const dagCBOR = require('ipld-dag-cbor');
 const Block = require('ipld-block');
-
 const log = debug("client")
+
+const identityHeaderField = "x-tupelo-id"
 
 export interface IGraphqlBlock {
     data: string
@@ -55,8 +59,23 @@ export function bytesToBlocks(bufs: Uint8Array[]): Promise<IBlock[]> {
     }))
 }
 
+// see note in golang aggregator
+interface Identity {
+    iss: string
+    sub: string
+    aud?: string
+    exp?: number
+    iat?: number
+}
+// see note in golang aggregator
+interface IdentityWithSignature extends Identity {
+    signature: Uint8Array
+}
+
 export class Client {
     apollo:ApolloClient<any> // TODO: do we need to support the cache shape?
+    private identity?:Identity
+    private key?:EcdsaKey
 
     constructor(url:string) {
         // Instantiate required constructor fields
@@ -66,12 +85,55 @@ export class Client {
           fetch: fetch,
         });
 
+        const authLink = this.getAuthLink()
+
         const client = new ApolloClient({
           // Provide required constructor fields
           cache: cache,
-          link: link,
+          link: authLink.concat(link),
         });
         this.apollo = client
+    }
+
+    identify(did:string,key:EcdsaKey) {
+        this.identity = {
+            iss:did,
+            sub: did,
+            iat: (new Date()).getTime(),
+        }
+        this.key = key
+    }
+
+    private async signedIdentity():Promise<undefined|IdentityWithSignature> {
+        if (!this.identity || !this.key) {
+            return undefined
+        }
+
+        const sigResp = await this.key.signObject(this.identity)
+        return {...this.identity, signature: sigResp.signature}
+    }
+
+    private async identityHeaderString():Promise<undefined|string> {
+        const ident = await this.signedIdentity()
+        if (!ident) {
+            return undefined
+        }
+        return Buffer.from(dagCBOR.util.serialize(ident)).toString('base64')
+    }
+
+    private getAuthLink() {
+        const getIdentityString = this.identityHeaderString.bind(this)
+
+        return setContext(async (_, { headers }) => {;
+            // return the headers to the context so httpLink can read them
+            const token = await getIdentityString()
+            return {
+              headers: {
+                ...headers,
+                [identityHeaderField]: token ? token : "",
+              }
+            }
+          });
     }
 
     async addBlock(abr:AddBlockRequest):Promise<IAddBlockResponse> {
@@ -101,38 +163,6 @@ export class Client {
             throw err
         }
     }
-
-    // async get(cid: CID): Promise<IBlock> {
-    //     log(`get ${cid.toBaseEncodedString()}`)
-    //     try {
-    //         const resp = await this.apollo.query({
-    //             query: gql`
-    //                 query blocks($ids: [String!]!) {
-    //                     blocks(input: {ids: $ids}) {
-    //                         blocks {
-    //                             cid
-    //                             data
-    //                         }
-    //                     }
-    //                 }
-    //             `,
-    //             variables: {
-    //                 ids: [cid.toBaseEncodedString()]
-    //             },
-    //         })
-    //         if (resp.errors) {
-    //             console.error("graphql errors: ", resp.errors)
-    //             throw new Error("errors: " + resp.errors.toString())
-    //         }
-    
-    //         const blocks = await graphQLtoBlocks(resp.data.blocks.blocks)
-    //         log(`get returning ${cid.toBaseEncodedString()}`, blocks)
-    //         return blocks[0]
-    //     } catch(err) {
-    //         log("graphql error: ", err)
-    //         throw err
-    //     }
-    // }
 
     async resolve(did:string, path:string, opts?:IResolveOptions):Promise<IClientResolveResponse> {
         log(`resolve did: ${did} ${path}`)

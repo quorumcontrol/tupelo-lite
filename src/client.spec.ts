@@ -35,7 +35,69 @@ describe("Client", () => {
         repo.close()
     })
 
-    it('supports multiple transactions', async ()=> {
+    it('identifies', async () => {
+        let cli = new Client("http://localhost:9011/graphql")
+
+        const repo = await Repo.memoryRepo("identifies")
+
+        const tree = await ChainTree.createRandom(new IpfsBlockService(repo.repo))
+        const abr = await tree.newAddBlockRequest([setDataTransaction("hi", "hi")])
+
+        cli.identify((await tree.id())!, tree.key!)
+
+        const resp = await cli.addBlock(abr)
+        expect(resp.errors).to.be.undefined
+        repo.close()
+    })
+
+    it('identifies with support for policies', async () => {
+        let cli = new Client("http://localhost:9011/graphql")
+
+        const repo = await Repo.memoryRepo("identifies-with-policy")
+
+        const tree = await ChainTree.createRandom(new IpfsBlockService(repo.repo))
+        const did = await tree.id()
+
+        const abr = await tree.newAddBlockRequest([
+            setDataTransaction(".well-known/policies", {
+                read: `
+                    package read
+			        default allow = false
+
+			        allow {
+			        	not input.path == "tree/data/locked"
+                    }
+
+                    allow {
+                        input.identity.sub == "${did}"
+                    }
+                `
+            }),
+            setDataTransaction("locked", "worked")
+        ])
+
+        const resp = await cli.addBlock(abr)
+        expect(resp.errors).to.be.undefined
+
+        // and now querying the locked path fails (because client is not identified)
+        const queryResp = await cli.resolve((await tree.id())!, "tree/data/locked")
+        expect(queryResp.value).to.equal(null)
+
+        // if we were to identify with the wrong key then it would still fail
+        const badKey = EcdsaKey.generate()
+        cli.identify((await tree.id())!, badKey)
+        const queryResp2 = await cli.resolve((await tree.id())!, "tree/data/locked")
+        expect(queryResp2.value).to.equal("worked")
+
+        // however if we identify then it should actually resolve
+        cli.identify((await tree.id())!, tree.key!)
+        const queryResp3 = await cli.resolve((await tree.id())!, "tree/data/locked")
+        expect(queryResp3.value).to.equal("worked")
+
+        repo.close()
+    })
+
+    it('supports multiple transactions', async () => {
         const repo = await Repo.memoryRepo("addsBlocks")
         // use the test server to create a query and mutate function
         const newKey = EcdsaKey.generate()
@@ -64,7 +126,7 @@ describe("Client", () => {
         repo.close()
     })
 
-    it('returns touched blocks', async ()=> {
+    it('returns touched blocks', async () => {
         const repo = await Repo.memoryRepo("clientGetTouchedBlocks")
         // use the test server to create a query and mutate function
 
@@ -74,7 +136,7 @@ describe("Client", () => {
         const resp = await cli.addBlock(abr)
         expect(resp.errors).to.be.undefined
 
-        const resolveResp = await cli.resolve((await tree.id())!, "/", {touchedBlocks: true})
+        const resolveResp = await cli.resolve((await tree.id())!, "/", { touchedBlocks: true })
         expect(resolveResp.touchedBlocks).to.have.lengthOf(1)
         repo.close()
     })
