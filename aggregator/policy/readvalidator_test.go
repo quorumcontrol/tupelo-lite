@@ -45,4 +45,10 @@ func TestBasicReadPolicy(t *testing.T) {
 	valid, err = ReadValidator(ctx, tree, "/tree/data/locked", id)
 	require.Nil(t, err)
 	require.False(t, valid)
+
+	// test it works with a nil identity
+
+	valid, err = ReadValidator(ctx, tree, "/tree/data", nil)
+	require.Nil(t, err)
+	require.True(t, valid)
 }
