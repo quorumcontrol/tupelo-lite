@@ -1,13 +1,8 @@
 import { ChainTree, IChainTreeInitializer, IBlockService, IResolveOptions, IResolveResponse } from "../chaintree";
-import { EcdsaKey } from "../ecdsa";
-import CID from "cids";
-import { Client, graphQLtoBlocks } from "../client";
+import { Client } from "../client";
 
 
 export interface IPolicyTreeInitializer extends IChainTreeInitializer {
-    key?: EcdsaKey
-    tip: CID,
-    store: IBlockService,
     client: Client
 }
 

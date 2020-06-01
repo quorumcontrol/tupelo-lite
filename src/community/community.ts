@@ -35,6 +35,10 @@ export class Community {
         })
     }
 
+    identify(did:string,key:EcdsaKey) {
+        this.client.identify(did, key)
+    }
+
     async createRandom() {
         const key = EcdsaKey.generate()
         return this.newEmptyTree(key)
