@@ -10,6 +10,7 @@ import (
 	"github.com/open-policy-agent/opa/rego"
 	"github.com/quorumcontrol/chaintree/chaintree"
 	"github.com/quorumcontrol/chaintree/dag"
+	"github.com/quorumcontrol/chaintree/graftabledag"
 	"github.com/quorumcontrol/chaintree/typecaster"
 	"github.com/quorumcontrol/tupelo/sdk/consensus"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/types"
@@ -91,7 +92,7 @@ policies := map[string]string{
 
 
 */
-func Validator(ctx context.Context, tree *dag.Dag, blockWithHeaders *chaintree.BlockWithHeaders) (bool, chaintree.CodedError) {
+func Validator(ctx context.Context, getter graftabledag.DagGetter, tree *dag.Dag, blockWithHeaders *chaintree.BlockWithHeaders) (bool, chaintree.CodedError) {
 	policies, remain, err := tree.Resolve(ctx, policyPath)
 	if err != nil {
 		return false, errToCoded(fmt.Errorf("error getting policy: %v", err))
@@ -157,15 +158,36 @@ func Validator(ctx context.Context, tree *dag.Dag, blockWithHeaders *chaintree.B
 		}
 		wantResults := make(map[string]interface{})
 		for _, pathInterface := range result {
-			path, ok := pathInterface.(string)
+			pathStr, ok := pathInterface.(string)
 			if !ok {
 				return false, errToCoded(fmt.Errorf("error resolving unknown path type: %T", pathInterface))
 			}
-			val, _, err := tree.Resolve(ctx, strings.Split(path, "/"))
+
+			var actingDag *dag.Dag
+			var path = []string{}
+
+			if strings.HasPrefix(pathStr, "did:tupelo") {
+				pathParts := strings.Split(pathStr, "/")
+				latest, err := getter.GetLatest(ctx, pathParts[0])
+				if err != nil {
+					return false, errToCoded(fmt.Errorf("error getting dag: %w", err))
+				}
+				path = pathParts[1:]
+				actingDag = latest.Dag
+			} else {
+				path = strings.Split(pathStr, "/")
+				actingDag = tree
+			}
+			graftingDag, err := graftabledag.New(actingDag, getter)
+			if err != nil {
+				return false, errToCoded(fmt.Errorf("error creating graftable dag: %w", err))
+			}
+
+			val, _, err := graftingDag.GlobalResolve(ctx, path)
 			if err != nil {
 				return false, errToCoded(fmt.Errorf("error resolving: %w", err))
 			}
-			wantResults[path] = val
+			wantResults[pathStr] = val
 		}
 		inputMap["paths"] = wantResults
 		results, err := query.Eval(ctx, rego.EvalInput(inputMap))
@@ -192,7 +214,7 @@ func allowResult(results rego.ResultSet) (bool, chaintree.CodedError) {
 // ValidatorGenerator passes in the GlobalResolve from the ng so that that paths can be resolved where needed
 func ValidatorGenerator(ctx context.Context, ng *types.NotaryGroup) (chaintree.BlockValidatorFunc, error) {
 	var isOwnerValidator chaintree.BlockValidatorFunc = func(tree *dag.Dag, blockWithHeaders *chaintree.BlockWithHeaders) (bool, chaintree.CodedError) {
-		return Validator(ctx, tree, blockWithHeaders)
+		return Validator(ctx, ng.DagGetter, tree, blockWithHeaders)
 	}
 	return isOwnerValidator, nil
 }
