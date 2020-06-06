@@ -10,6 +10,9 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/cognitoidentity"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/ipfs/go-datastore"
 	s3ds "github.com/ipfs/go-ds-s3"
@@ -127,6 +130,42 @@ func getDatastore() datastore.Batching {
 	return aggregator.NewMemoryStore()
 }
 
+func loginHandler(ctx context.Context, input api.LoginArg) (*api.LoginPayload, error) {
+	// requester := api.RequesterFromCtx(ctx)
+	mySession := session.Must(session.NewSession())
+	serv := cognitoidentity.New(mySession)
+
+	out, err := serv.GetOpenIdTokenForDeveloperIdentity(&cognitoidentity.GetOpenIdTokenForDeveloperIdentityInput{
+		// A unique identifier in the format REGION:GUID.
+		// IdentityId: aws.String("test:" + requester.Sub),
+
+		// An identity pool ID in the format REGION:GUID.
+		//
+		// IdentityPoolId is a required field
+		IdentityPoolId: aws.String("us-east-1:7f389607-e692-46bb-b358-2488187cd4ca"),
+
+		// A set of optional name-value pairs that map provider names to provider tokens.
+		// Each name-value pair represents a user from a public provider or developer
+		// provider. If the user is from a developer provider, the name-value pair will
+		// follow the syntax "developer_provider_name": "developer_user_identifier".
+		// The developer provider is the "domain" by which Cognito will refer to your
+		// users; you provided this domain while creating/updating the identity pool.
+		// The developer user identifier is an identifier from your backend that uniquely
+		// identifies a user. When you create an identity pool, you can specify the
+		// supported logins.
+		//
+		// Logins is a required field
+		Logins: map[string]*string{"demoIdentityProvider": aws.String(input.Input.Did)},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error getting token: %w", err)
+	}
+	return &api.LoginPayload{
+		Result: true,
+		Token:  *out.Token,
+	}, nil
+}
+
 func init() {
 	log.Println("init")
 	ctx := context.Background()
@@ -134,6 +173,8 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+	resolver.LoginHandler = loginHandler
+
 	opts := []graphql.SchemaOpt{graphql.UseFieldResolvers(), graphql.MaxParallelism(20)}
 	schema, err := graphql.ParseSchema(api.Schema, resolver, opts...)
 	if err != nil {
@@ -162,7 +203,7 @@ var page = `
 		<div id="graphiql" style="height: 100vh;">Loading...</div>
 		<script>
 			function graphQLFetcher(graphQLParams) {
-				return fetch("/dev/graphql", {
+				return fetch("/demo/graphql", {
 					method: "post",
 					body: JSON.stringify(graphQLParams),
 					credentials: "include",

@@ -31,8 +31,11 @@ custom:
 provider:
   name: aws
   runtime: go1.x
+  stage: ${opt:stage, 'dev'}
   iamManagedPolicies:
     - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    - arn:aws:iam::aws:policy/AWSIoTDataAccess
+    - arn:aws:iam::aws:policy/AmazonCognitoDeveloperAuthenticatedIdentities
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -48,21 +51,6 @@ provider:
       Resource:
         - "Fn::GetAtt": [ BlocksTable, Arn ]
 
-    - Effect: "Allow"
-      Action:
-        - "*"
-      Resource: { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "SimpleChainRepo" } ] ]  }
-
-    - Effect: "Allow"
-      Action:
-        - "s3:PutObject"
-        - "*"
-      Resource:
-        Fn::Join:
-          - ""
-          - - "arn:aws:s3:::"
-            - "Ref" : "SimpleChainRepo"
-            - "/*"
 # you can overwrite defaults here
 #  stage: dev
 #  region: us-east-1
@@ -152,6 +140,57 @@ functions:
 # you can add CloudFormation resource templates here
 resources:
   Resources:
+    CognitoIdentityPool:
+      Type: AWS::Cognito::IdentityPool
+      Properties:
+        # Generate a name based on the stage
+        IdentityPoolName: ${self:custom.stage}IdentityPool
+        # Don't allow unathenticated users
+        AllowUnauthenticatedIdentities: false
+        DeveloperProviderName: ${self:custom.stage}IdentityProvider
+
+    CognitoIdentityPoolRoles:
+      Type: AWS::Cognito::IdentityPoolRoleAttachment
+      Properties:
+        IdentityPoolId:
+          Ref: CognitoIdentityPool
+        Roles:
+          authenticated:
+            Fn::GetAtt: [MQRole, Arn]
+
+    MQRole:
+      Type: AWS::IAM::Role
+      Properties: 
+        Description: "Identified users of tupelo-lite can assume this role to use MQTT"
+        AssumeRolePolicyDocument: 
+          Version: '2012-10-17'
+          Statement:
+            - Effect: 'Allow'
+              Principal:
+                Federated: 'cognito-identity.amazonaws.com'
+              Action:
+                - 'sts:AssumeRoleWithWebIdentity'
+              Condition:
+                StringEquals:
+                  'cognito-identity.amazonaws.com:aud':
+                    Ref: CognitoIdentityPool
+                'ForAnyValue:StringLike':
+                  'cognito-identity.amazonaws.com:amr': authenticated
+        Policies: 
+          - PolicyName: "ReadWriteMessageQueue"
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: "Allow"
+                  Resource: "*"
+                  Action:
+                    - "cognito-identity:GetOpenIdTokenForDeveloperIdentity"
+                    - "iot:Connect"
+                    - "iot:Publish"
+                    - "iot:Subscribe"
+                    - "iot:Receive"
+                    - "cognito-identity:*"
+
     BlocksTable:
       Type: AWS::DynamoDB::Table
       Properties:
@@ -167,19 +206,3 @@ resources:
           Enabled: true
         # Set the capacity to auto-scale
         BillingMode: PAY_PER_REQUEST
-
-    SimpleChainRepo:
-      Type: AWS::S3::Bucket
-      Properties:
-        BucketName: simple-chain-test-repo
-
-#resources:
-#  Resources:
-#    NewResource:
-#      Type: AWS::S3::Bucket
-#      Properties:
-#        BucketName: my-new-bucket
-#  Outputs:
-#     NewOutput:
-#       Description: "Description for the output"
-#       Value: "Some output value"

@@ -25,8 +25,11 @@ const IdentityContextKey = "tupelo-lite:identity"
 
 var logger = logging.Logger("resolver")
 
+type LoginFunc func(ctx context.Context, input LoginArg) (*LoginPayload, error)
+
 type Resolver struct {
-	Aggregator *aggregator.Aggregator
+	Aggregator   *aggregator.Aggregator
+	LoginHandler LoginFunc
 }
 
 func NewResolver(ctx context.Context, ds datastore.Batching) (*Resolver, error) {
@@ -57,9 +60,20 @@ type ResolvePayload struct {
 	TouchedBlocks *[]Block
 }
 
+type LoginPayload struct {
+	Result bool
+	Token  string
+}
+
 type AddBlockInput struct {
 	Input struct {
 		AddBlockRequest string //base64
+	}
+}
+
+type LoginArg struct {
+	Input struct {
+		Did string
 	}
 }
 
@@ -153,6 +167,13 @@ func blocksToGraphQLBlocks(nodes []format.Node) []Block {
 		}
 	}
 	return retBlocks
+}
+
+func (r *Resolver) Login(ctx context.Context, input LoginArg) (*LoginPayload, error) {
+	if r.LoginHandler == nil {
+		return nil, fmt.Errorf("undefined login handler")
+	}
+	return r.LoginHandler(ctx, input)
 }
 
 func (r *Resolver) AddBlock(ctx context.Context, input AddBlockInput) (*AddBlockPayload, error) {
