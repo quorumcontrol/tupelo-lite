@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cognitoidentity"
+	"github.com/aws/aws-sdk-go/service/iot"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/ipfs/go-datastore"
 	s3ds "github.com/ipfs/go-ds-s3"
@@ -134,6 +135,7 @@ func loginHandler(ctx context.Context, input api.LoginArg) (*api.LoginPayload, e
 	// requester := api.RequesterFromCtx(ctx)
 	mySession := session.Must(session.NewSession())
 	serv := cognitoidentity.New(mySession)
+	iotCli := iot.New(mySession)
 
 	out, err := serv.GetOpenIdTokenForDeveloperIdentity(&cognitoidentity.GetOpenIdTokenForDeveloperIdentityInput{
 		// A unique identifier in the format REGION:GUID.
@@ -160,9 +162,19 @@ func loginHandler(ctx context.Context, input api.LoginArg) (*api.LoginPayload, e
 	if err != nil {
 		return nil, fmt.Errorf("error getting token: %w", err)
 	}
+
+	_, err = iotCli.AttachPolicy(&iot.AttachPolicyInput{
+		PolicyName: aws.String("allAccess"),
+		Target:     out.IdentityId,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error getting token: %w", err)
+	}
+
 	return &api.LoginPayload{
 		Result: true,
 		Token:  *out.Token,
+		Id:     *out.IdentityId,
 	}, nil
 }
 

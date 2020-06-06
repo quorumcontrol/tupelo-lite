@@ -13,10 +13,14 @@
   "dependencies": {
     "@apollo/client": "^3.0.0-beta.48",
     "@apollo/link-context": "^2.0.0-beta.3",
+    "@aws-amplify/pubsub": "^3.0.16",
     "@types/debug": "^4.1.5",
     "@types/graphql-type-json": "^0.3.2",
     "@types/pbkdf2": "^3.0.0",
+    "@types/ws": "^7.2.5",
     "add": "^2.0.6",
+    "aws-amplify": "^3.0.16",
+    "aws-sdk": "^2.691.0",
     "cids": "^0.8.0",
     "cross-fetch": "^3.0.4",
     "debug": "^4.1.1",
@@ -33,7 +37,8 @@
     "pbkdf2": "^3.0.17",
     "rimraf": "^3.0.2",
     "scrypt-async-modern": "^3.0.12",
-    "tupelo-messages": "^2.2.1"
+    "tupelo-messages": "^2.2.1",
+    "ws": "^7.3.0"
   },
   "devDependencies": {
     "@types/chai": "^4.2.11",

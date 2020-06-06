@@ -63,6 +63,7 @@ type ResolvePayload struct {
 type LoginPayload struct {
 	Result bool
 	Token  string
+	Id     string
 }
 
 type AddBlockInput struct {

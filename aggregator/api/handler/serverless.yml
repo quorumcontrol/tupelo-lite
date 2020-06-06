@@ -158,6 +158,14 @@ resources:
           authenticated:
             Fn::GetAtt: [MQRole, Arn]
 
+    # IOTRule:
+    #   Type" : "AWS::IoT::Policy",
+    #           "Properties" : {
+    #               "PolicyDocument" : Json,
+    #               "PolicyName" : String
+    #             }
+    #         }        
+
     MQRole:
       Type: AWS::IAM::Role
       Properties: 
@@ -170,12 +178,12 @@ resources:
                 Federated: 'cognito-identity.amazonaws.com'
               Action:
                 - 'sts:AssumeRoleWithWebIdentity'
-              Condition:
-                StringEquals:
-                  'cognito-identity.amazonaws.com:aud':
-                    Ref: CognitoIdentityPool
-                'ForAnyValue:StringLike':
-                  'cognito-identity.amazonaws.com:amr': authenticated
+              # Condition:
+              #   StringEquals:
+              #     'cognito-identity.amazonaws.com:aud':
+              #       Ref: CognitoIdentityPool
+              #   'ForAnyValue:StringLike':
+              #     'cognito-identity.amazonaws.com:amr': authenticated
         Policies: 
           - PolicyName: "ReadWriteMessageQueue"
             PolicyDocument:
@@ -184,12 +192,11 @@ resources:
                 - Effect: "Allow"
                   Resource: "*"
                   Action:
-                    - "cognito-identity:GetOpenIdTokenForDeveloperIdentity"
+                    - "sts:AssumeRoleWithWebIdentity"
                     - "iot:Connect"
                     - "iot:Publish"
                     - "iot:Subscribe"
                     - "iot:Receive"
-                    - "cognito-identity:*"
 
     BlocksTable:
       Type: AWS::DynamoDB::Table

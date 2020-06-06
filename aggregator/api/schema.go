@@ -23,6 +23,7 @@ type ResolvePayload {
 type LoginPayload {
 	result: Boolean!
 	token: String!
+	id: String!
 }
 
 input ResolveInput {
