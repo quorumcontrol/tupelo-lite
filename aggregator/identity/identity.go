@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	logging "github.com/ipfs/go-log"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	cbornode "github.com/ipfs/go-ipld-cbor"
 	format "github.com/ipfs/go-ipld-format"
@@ -20,7 +22,7 @@ import (
 
 var logger = logging.Logger("identity")
 
-const IdentityHeaderField = "x-tupelo-id"
+const IdentityHeaderField = "X-Tupelo-Id"
 
 func init() {
 	cbornode.RegisterCborType(Identity{})
@@ -73,48 +75,61 @@ func (i *Identity) Sign(key *ecdsa.PrivateKey) (*IdentityWithSignature, error) {
 }
 
 func (is *IdentityWithSignature) Verify(ctx context.Context, getter graftabledag.DagGetter) (bool, error) {
+	logger.Debugf("Verifying identity: %s", spew.Sdump(is.Identity))
 	sw := &safewrap.SafeWrap{}
 	wrapped := sw.WrapObject(is.Identity)
 	if sw.Err != nil {
 		return false, fmt.Errorf("error wrapping: %w", sw.Err)
 	}
-	recoveredPub, err := crypto.SigToPub(nodeToHash(wrapped), is.Signature)
+
+	hsh := nodeToHash(wrapped)
+	logger.Debugf("verifying %s", hexutil.Encode(hsh))
+
+	recoveredPub, err := crypto.SigToPub(hsh, is.Signature)
 	if err != nil {
 		return false, fmt.Errorf("error recovering signature: %w", err)
 	}
 
-	verified := crypto.VerifySignature(crypto.FromECDSAPub(recoveredPub), nodeToHash(wrapped), is.Signature[:len(is.Signature)-1])
+	verified := crypto.VerifySignature(crypto.FromECDSAPub(recoveredPub), hsh, is.Signature[:len(is.Signature)-1])
 	if !verified {
+		logger.Warningf("unverified signature")
 		return false, nil
 	}
 
 	now := time.Now().UTC().Unix()
 
 	if now > is.Identity.Exp {
+		logger.Warningf("expired identity: now %d, exp: %d", now, is.Identity.Exp)
 		return false, nil
 	}
 	latest, err := getter.GetLatest(ctx, is.Sub)
 	if err != nil {
+		logger.Errorf("error getting latest: %v", err)
 		return false, fmt.Errorf("error getting latest: %w", err)
 	}
 	graftedOwnership, err := types.NewGraftedOwnership(latest.Dag, getter)
 	if err != nil {
+		logger.Errorf("error getting ownership: %v", err)
 		return false, fmt.Errorf("error getting ownership: %w", err)
 	}
 
 	addrs, err := graftedOwnership.ResolveOwners(ctx)
 	if err != nil {
+		logger.Errorf("error resolving owners: %v", err)
 		return false, fmt.Errorf("error resolving owners: %w", err)
 	}
 	identityAddr, err := is.Address()
 	if err != nil {
+		logger.Errorf("error getting addr: %v", err)
 		return false, fmt.Errorf("error getting addr: %w", err)
 	}
+	logger.Debugf("addrs: %v, identity Addr: %s", addrs, identityAddr)
 	for _, addr := range addrs {
 		if addr == identityAddr {
 			return true, nil
 		}
 	}
+	logger.Debugf("no addr found")
 	return false, nil
 }
 

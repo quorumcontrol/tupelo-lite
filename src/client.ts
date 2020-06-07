@@ -12,7 +12,7 @@ const dagCBOR = require('ipld-dag-cbor');
 const Block = require('ipld-block');
 const log = debug("client")
 
-const identityHeaderField = "x-tupelo-id"
+const identityHeaderField = "X-Tupelo-Id"
 
 export interface IGraphqlBlock {
     data: string
@@ -106,6 +106,7 @@ export class Client {
             iss:did,
             sub: did,
             iat: now.getTime() + (now.getTimezoneOffset() * 60000),
+            aud: "",
         }
         this.key = key
     }
@@ -117,9 +118,9 @@ export class Client {
         const now = new Date()
 
         const identity = {...this.identity, exp: now.getTime() + (now.getTimezoneOffset() * 60000) + 10000}
-
+        log("identity: ", identity)
         const sigResp = await this.key.signObject(identity)
-        return {...this.identity, signature: sigResp.signature}
+        return {...identity, signature: sigResp.signature}
     }
 
     private async identityHeaderString():Promise<undefined|string> {

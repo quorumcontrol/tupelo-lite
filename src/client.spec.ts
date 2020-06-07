@@ -82,18 +82,20 @@ describe("Client", () => {
         repo.close()
     })
 
-    it('identifies', async () => {
+    it('identifies without a policy', async () => {
         let cli = new Client("http://localhost:9011/graphql")
 
         const repo = await Repo.memoryRepo("identifies")
 
         const tree = await ChainTree.createRandom(new IpfsBlockService(repo.repo))
         const abr = await tree.newAddBlockRequest([setDataTransaction("hi", "hi")])
-
-        cli.identify((await tree.id())!, tree.key!)
-
         const resp = await cli.addBlock(abr)
         expect(resp.errors).to.be.undefined
+        const did = (await tree.id())
+        cli.identify(did!, tree.key!)
+        const resolveResp = await cli.resolve(did!, "/tree/data/hi")
+        expect(resolveResp.value).to.equal("hi")
+
         repo.close()
     })
 
@@ -134,7 +136,7 @@ describe("Client", () => {
         const badKey = EcdsaKey.generate()
         cli.identify((await tree.id())!, badKey)
         const queryResp2 = await cli.resolve((await tree.id())!, "tree/data/locked")
-        expect(queryResp2.value).to.equal("worked")
+        expect(queryResp2.value).to.equal(null)
 
         // however if we identify then it should actually resolve
         cli.identify((await tree.id())!, tree.key!)

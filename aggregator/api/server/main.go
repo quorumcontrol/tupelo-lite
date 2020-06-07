@@ -10,6 +10,7 @@ import (
 
 	"github.com/graph-gophers/graphql-go"
 	"github.com/graph-gophers/graphql-go/relay"
+	"github.com/quorumcontrol/chaintree/graftabledag"
 	"github.com/quorumcontrol/tupelo-lite/aggregator"
 	"github.com/quorumcontrol/tupelo-lite/aggregator/api"
 	"github.com/quorumcontrol/tupelo-lite/aggregator/identity"
@@ -30,18 +31,26 @@ func CorsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func IdentityMiddleware(next http.Handler) http.Handler {
+func IdentityMiddleware(next http.Handler, getter graftabledag.DagGetter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, err := identity.FromHeader(r.Header)
 		if err != nil {
 			w.WriteHeader(500)
 			return
 		}
-		logger.Debugf("id: %v", id)
 		if id != nil {
-			newR := r.WithContext(context.WithValue(r.Context(), api.IdentityContextKey, id.Identity))
-			next.ServeHTTP(w, newR)
-			return
+			isVerified, err := id.Verify(context.TODO(), getter)
+			if err != nil {
+				logger.Errorf("error verifying: %v", err)
+				w.WriteHeader(500)
+				return
+			}
+			if isVerified {
+				logger.Debugf("id: %v", id)
+				newR := r.WithContext(context.WithValue(r.Context(), api.IdentityContextKey, id.Identity))
+				next.ServeHTTP(w, newR)
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -53,7 +62,17 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	r, err := api.NewResolver(ctx, &api.Config{KeyValueStore: aggregator.NewMemoryStore()})
+	// TODO: publish this to an mqtt broker
+	updateChan := make(aggregator.UpdateChan, 10)
+	go func() {
+		for {
+			// up := <-updateChan
+			// logger.Debugf("updated: %v", up)
+			<-updateChan
+		}
+	}()
+
+	r, err := api.NewResolver(ctx, &api.Config{KeyValueStore: aggregator.NewMemoryStore(), UpdateChannel: updateChan})
 	if err != nil {
 		panic(err)
 	}
@@ -64,9 +83,9 @@ func main() {
 	http.Handle("/", CorsMiddleware(IdentityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("rendering igraphql")
 		w.Write(page)
-	}))))
+	}), r.Aggregator)))
 
-	http.Handle("/graphql", CorsMiddleware(IdentityMiddleware((&relay.Handler{Schema: schema}))))
+	http.Handle("/graphql", CorsMiddleware(IdentityMiddleware(&relay.Handler{Schema: schema}, r.Aggregator)))
 
 	fmt.Println("running on port 9011 path: /graphql")
 	log.Fatal(http.ListenAndServe(":9011", nil))

@@ -1,6 +1,9 @@
 import { randomBytes, SigningKey, computeAddress, joinSignature } from 'ethers/utils'
 import scrypt from 'scrypt-async-modern'
 import pbkdf2 from 'pbkdf2'
+import debug from 'debug';
+
+const log = debug("ecdsa")
 
 const dagCBOR = require('ipld-dag-cbor')
 
@@ -103,6 +106,7 @@ export class EcdsaKey {
         const bits = dagCBOR.util.serialize(obj)
 
         const digest = (await dagCBOR.util.cid(bits)).multihash.slice(2)
+        log("signing digest: ", Buffer.from(digest).toString('hex'))
         let signature = signingKey.signDigest(digest);
 
         // this is weird, but for some reason Go and JS differ in how they handle the last byte of the signature
