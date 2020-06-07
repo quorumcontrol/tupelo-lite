@@ -25,14 +25,14 @@ import (
 )
 
 var (
-	// QueryNameNotProvided is thrown when a name is not provided
-	QueryNameNotProvided = errors.New("no query was provided in the HTTP body")
-	mainSchema           *graphql.Schema
-	identityPoolId       = os.Getenv("IDENTITY_POOL")
-	identityProviderName = os.Getenv("IDENTITY_PROVIDER_NAME")
-	deploymentStage      = os.Getenv("STAGE")
-	iotPolicyName        = os.Getenv("IOT_POLICY_NAME")
-	dynamoTableName      = os.Getenv("TABLE_NAME")
+	// ErrQueryNameNotProvided is thrown when no query name is provided in a request
+	ErrQueryNameNotProvided = errors.New("no query was provided in the HTTP body")
+	mainSchema              *graphql.Schema
+	identityPoolID          = os.Getenv("IDENTITY_POOL")
+	identityProviderName    = os.Getenv("IDENTITY_PROVIDER_NAME")
+	deploymentStage         = os.Getenv("STAGE")
+	iotPolicyName           = os.Getenv("IOT_POLICY_NAME")
+	dynamoTableName         = os.Getenv("TABLE_NAME")
 
 	logger = logging.Logger("handler.Main")
 )
@@ -143,7 +143,7 @@ func tokenHandler(ctx context.Context) (*api.IdentityTokenPayload, error) {
 	iotCli := iot.New(mySession)
 
 	out, err := serv.GetOpenIdTokenForDeveloperIdentity(&cognitoidentity.GetOpenIdTokenForDeveloperIdentityInput{
-		IdentityPoolId: aws.String(identityPoolId),
+		IdentityPoolId: aws.String(identityPoolID),
 		Logins:         map[string]*string{identityProviderName: aws.String(requester.Sub)},
 	})
 	if err != nil {
