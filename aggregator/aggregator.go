@@ -32,6 +32,11 @@ var CacheSize = 100
 // assert fulfills the interface at compile time
 var _ graftabledag.DagGetter = (*Aggregator)(nil)
 
+// UpdateChan is a stream of updates from the aggregator,
+// passed in from the config (optinally) it's used to
+// send updates to other parts of the system (for instance, publishing on a message queue)
+type UpdateChan chan *gossip.AddBlockWrapper
+
 type AddResponse struct {
 	IsValid  bool
 	NewTip   cid.Cid
@@ -45,22 +50,31 @@ type Aggregator struct {
 	validator     *gossip.TransactionValidator
 	keyValueStore datastore.Batching
 	group         *types.NotaryGroup
+	updateChan    UpdateChan
 }
 
-func NewAggregator(ctx context.Context, keyValueStore datastore.Batching, group *types.NotaryGroup) (*Aggregator, error) {
-	validator, err := gossip.NewTransactionValidator(ctx, logger, group, nil) // nil is the actor pid
+// AggregatorConfig is used to configure a new Aggregator
+type AggregatorConfig struct {
+	KeyValueStore datastore.Batching
+	Group         *types.NotaryGroup
+	UpdateChannel UpdateChan
+}
+
+func NewAggregator(ctx context.Context, config *AggregatorConfig) (*Aggregator, error) {
+	validator, err := gossip.NewTransactionValidator(ctx, logger, config.Group, nil) // nil is the actor pid
 	if err != nil {
 		return nil, err
 	}
-	dagStore, err := nodestore.FromDatastoreOfflineCached(ctx, keyValueStore, CacheSize)
+	dagStore, err := nodestore.FromDatastoreOfflineCached(ctx, config.KeyValueStore, CacheSize)
 	if err != nil {
 		return nil, err
 	}
 	return &Aggregator{
-		keyValueStore: keyValueStore,
+		keyValueStore: config.KeyValueStore,
 		DagStore:      dagStore,
 		validator:     validator,
-		group:         group,
+		group:         config.Group,
+		updateChan:    config.UpdateChannel,
 	}, nil
 }
 

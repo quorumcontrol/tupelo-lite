@@ -37,7 +37,8 @@ func NewResolver(ctx context.Context, ds datastore.Batching) (*Resolver, error) 
 	defaultConfig.ValidatorGenerators = append(defaultConfig.ValidatorGenerators, policy.ValidatorGenerator)
 	defaultConfig.ID = "aggregator"
 	ng := types.NewNotaryGroupFromConfig(defaultConfig)
-	agg, err := aggregator.NewAggregator(ctx, ds, ng)
+
+	agg, err := aggregator.NewAggregator(ctx, &aggregator.AggregatorConfig{KeyValueStore: ds, Group: ng})
 	if err != nil {
 		return nil, fmt.Errorf("error creating aggregator: %w", err)
 	}

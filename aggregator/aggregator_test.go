@@ -17,7 +17,7 @@ func TestNewAggregator(t *testing.T) {
 	defer cancel()
 	ng := types.NewNotaryGroup("testnotary")
 
-	_, err := NewAggregator(ctx, NewMemoryStore(), ng)
+	_, err := NewAggregator(ctx, &AggregatorConfig{KeyValueStore: NewMemoryStore(), Group: ng})
 	require.Nil(t, err)
 }
 
@@ -27,7 +27,7 @@ func TestAddingAbrs(t *testing.T) {
 
 	ng := types.NewNotaryGroup("testnotary")
 
-	agg, err := NewAggregator(ctx, NewMemoryStore(), ng)
+	agg, err := NewAggregator(ctx, &AggregatorConfig{KeyValueStore: NewMemoryStore(), Group: ng})
 	require.Nil(t, err)
 
 	t.Run("new ABR, no existing works", func(t *testing.T) {
@@ -63,7 +63,7 @@ func TestGetLatest(t *testing.T) {
 
 	ng := types.NewNotaryGroup("testnotary")
 
-	agg, err := NewAggregator(ctx, NewMemoryStore(), ng)
+	agg, err := NewAggregator(ctx, &AggregatorConfig{KeyValueStore: NewMemoryStore(), Group: ng})
 	require.Nil(t, err)
 
 	t.Run("saves state", func(t *testing.T) {
@@ -93,7 +93,7 @@ func BenchmarkSimplePolicy(b *testing.B) {
 
 	ng := types.NewNotaryGroup("testnotary")
 
-	agg, err := NewAggregator(ctx, NewMemoryStore(), ng)
+	agg, err := NewAggregator(ctx, &AggregatorConfig{KeyValueStore: NewMemoryStore(), Group: ng})
 	require.Nil(b, err)
 
 	treeKey, err := crypto.GenerateKey()
@@ -120,14 +120,14 @@ allow {
 	require.Nil(b, err)
 }
 
-// BenchmarkAdd-12    	    1504	    861040 ns/op	  199471 B/op	    2992 allocs/op
+// BenchmarkAdd-12    	    1537	    757477 ns/op	  228498 B/op	    3538 allocs/op
 func BenchmarkAdd(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	ng := types.NewNotaryGroup("testnotary")
 
-	agg, err := NewAggregator(ctx, NewMemoryStore(), ng)
+	agg, err := NewAggregator(ctx, &AggregatorConfig{KeyValueStore: NewMemoryStore(), Group: ng})
 	require.Nil(b, err)
 
 	txs := make([]*services.AddBlockRequest, b.N)
