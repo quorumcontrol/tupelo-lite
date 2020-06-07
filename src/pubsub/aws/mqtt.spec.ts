@@ -5,7 +5,8 @@ import { PubSub, Auth } from 'aws-amplify';
 import {Repo} from '../../repo';
 import {Community} from '../../community/community';
 import { authenticatePubsub } from './mqtt';
-import { setDataTransaction } from '../../chaintree';
+import { setDataTransaction, ChainTree } from '../../chaintree';
+import { EcdsaKey } from '../../ecdsa';
 
 const api = 'https://a7s7o22i6d.execute-api.us-east-1.amazonaws.com/demo/graphql';
 
@@ -14,9 +15,12 @@ describe("MQTT", ()=> {
     it('does not error', async ()=> {
         const repo = await Repo.memoryRepo("mqttSanity")
         const community = new Community(api, repo)
-        const root = await community.createRandom()
+        const key = await EcdsaKey.passPhraseKey(Buffer.from("test1"), Buffer.from("mqtt-test"))
+
+        const root = await community.getLatest(key.toDid())
+        root.key = key
         const did = await root.id()
-        await community.playTransactions(root, [setDataTransaction("/onServer", true)])
+        // await community.playTransactions(root, [setDataTransaction("/onServer", true)])
         community.identify(did!, root.key!)
 
         const token = await community.client.identityToken()
@@ -31,8 +35,13 @@ describe("MQTT", ()=> {
                 complete: () => console.log('Done'),
             });
             console.log("subscribed")
-            setTimeout(()=> {
-                PubSub.publish('public/userToUser/test', { msg: 'Hello to all subscribers!' });
+            setTimeout(async ()=> {
+                try {
+                    await PubSub.publish('public/userToUser/test', { msg: 'Hello to all subscribers!' });
+                } catch(e) {
+                    console.error("error: ", e)
+                    reject(e)
+                }
                 console.log("published")
 
             },1000)

@@ -78,7 +78,7 @@ functions:
       TABLE_NAME: ${self:custom.tableName}
       IDENTITY_POOL: !Ref CognitoIdentityPool
       STAGE: ${self:custom.stage}
-      IOT_POLICY_NAME: "publicReadUserToUserWrite" # see IOTReadPolicy
+      IOT_POLICY_NAME: !Ref IOTReadPolicy
       IDENTITY_PROVIDER_NAME: ${self:custom.identityProviderName}
 
 # you can add CloudFormation resource templates here
@@ -105,7 +105,6 @@ resources:
     IOTReadPolicy:
       Type: "AWS::IoT::Policy"
       Properties:
-        PolicyName: publicReadUserToUserWrite
         PolicyDocument:
           Version: "2012-10-17"
           Statement:
@@ -116,16 +115,18 @@ resources:
                 - "iot:Connect"
             - Effect: "Allow"
               Resource: 
-                !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/public/#'
+                !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/public/*'
               Action: 
-                - "iot:Subscribe"
                 - "iot:Receive"
             - Effect: "Allow"
               Resource: 
-                !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/public/userToUser/#'
+                !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/public/*'
               Action: 
                 - "iot:Subscribe"
-                - "iot:Receive"
+            - Effect: "Allow"
+              Resource: 
+                !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/public/userToUser/*'
+              Action: 
                 - "iot:Publish"
 
     MQRole:
@@ -140,12 +141,12 @@ resources:
                 Federated: 'cognito-identity.amazonaws.com'
               Action:
                 - 'sts:AssumeRoleWithWebIdentity'
-              Condition:
-                StringEquals:
-                  'cognito-identity.amazonaws.com:aud':
-                    Ref: CognitoIdentityPool
-                'ForAnyValue:StringLike':
-                  'cognito-identity.amazonaws.com:amr': authenticated
+              # Condition:
+              #   StringEquals:
+              #     'cognito-identity.amazonaws.com:aud':
+              #       Ref: CognitoIdentityPool
+              #   'ForAnyValue:StringLike':
+              #     'cognito-identity.amazonaws.com:amr': authenticated
         Policies: 
           - PolicyName: "ReadWriteMessageQueue"
             PolicyDocument:
