@@ -8,6 +8,8 @@ import (
 	"log"
 	"os"
 
+	logging "github.com/ipfs/go-log"
+
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
@@ -16,7 +18,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/iot"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/ipfs/go-datastore"
-	s3ds "github.com/ipfs/go-ds-s3"
 	dynamods "github.com/quorumcontrol/go-ds-dynamodb"
 	"github.com/quorumcontrol/tupelo-lite/aggregator"
 	"github.com/quorumcontrol/tupelo-lite/aggregator/api"
@@ -27,10 +28,17 @@ var (
 	// QueryNameNotProvided is thrown when a name is not provided
 	QueryNameNotProvided = errors.New("no query was provided in the HTTP body")
 	mainSchema           *graphql.Schema
+	identityPoolId       = os.Getenv("IDENTITY_POOL")
+	identityProviderName = os.Getenv("IDENTITY_PROVIDER_NAME")
+	deploymentStage      = os.Getenv("STAGE")
+	iotPolicyName        = os.Getenv("IOT_POLICY_NAME")
+	dynamoTableName      = os.Getenv("TABLE_NAME")
+
+	logger = logging.Logger("handler.Main")
 )
 
 func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	log.Printf("Processing Lambda request %s\n", request.RequestContext.RequestID)
+	logger.Infof("Processing Lambda request %s", request.RequestContext.RequestID)
 	if request.HTTPMethod == "OPTIONS" { // not sure why we need this and the "cors:true" on the serverless isn't handling it
 		return events.APIGatewayProxyResponse{
 			Body:       page,
@@ -62,7 +70,7 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 	}
 
 	if err := json.Unmarshal([]byte(request.Body), &params); err != nil {
-		log.Print("Could not decode body", err)
+		logger.Warningf("Could not decode body: %v", err)
 		return events.APIGatewayProxyResponse{
 			Body:       "could not decode body",
 			StatusCode: 500,
@@ -73,20 +81,26 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 	if ok {
 		ident, err := identity.FromHeader(map[string][]string{identity.IdentityHeaderField: {header}})
 		if err != nil {
-			log.Print("Could not get identity", err)
+			logger.Warningf("Could not get identity, %v", err)
 			return events.APIGatewayProxyResponse{
 				Body:       fmt.Sprintf("could not decode: %v", err),
 				StatusCode: 500,
 			}, nil
 		}
-
-		ctx = context.WithValue(ctx, api.IdentityContextKey, ident)
+		if ident != nil {
+			//TODO: this can probably be debug
+			logger.Infof("identity: %s", ident.Sub)
+			ctx = context.WithValue(ctx, api.IdentityContextKey, ident.Identity)
+		}
 	}
+
+	//TODO: remove
+	logger.Infof("identity from ctx: %v", api.RequesterFromCtx(ctx))
 
 	response := mainSchema.Exec(ctx, params.Query, params.OperationName, params.Variables)
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
-		log.Print("Could not decode body")
+		log.Println("Could not decode body")
 	}
 
 	return events.APIGatewayProxyResponse{
@@ -101,77 +115,52 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 }
 
 func getDatastore() datastore.Batching {
-	bucketName, ok := os.LookupEnv("BUCKET_NAME")
-	if ok {
-		log.Println("using s3 datastore: ", bucketName)
-		s3conf := s3ds.Config{
-			Bucket: bucketName,
-			Region: os.Getenv("REGION"),
-		}
-
-		ds, err := s3ds.NewS3Datastore(s3conf)
-		if err != nil {
-			panic(err)
-		}
-		return ds
-	}
-
-	tableName, ok := os.LookupEnv("TABLE_NAME")
-	if ok {
-		log.Println("using dynamo datastore: ", tableName)
+	if dynamoTableName != "" {
+		logger.Infof("using dynamo datastore: %s", dynamoTableName)
 		dynds, err := dynamods.NewDynamoDatastore(dynamods.Config{
-			TableName: tableName,
+			TableName: dynamoTableName,
 		})
 		if err != nil {
 			panic(err)
 		}
 		return dynds
 	}
-
 	return aggregator.NewMemoryStore()
 }
 
-func loginHandler(ctx context.Context, input api.LoginArg) (*api.LoginPayload, error) {
-	// requester := api.RequesterFromCtx(ctx)
+func tokenHandler(ctx context.Context) (*api.IdentityTokenPayload, error) {
+	logger.Infof("tokenHandler")
+	requester := api.RequesterFromCtx(ctx)
+	if requester == nil {
+		logger.Warningf("no requester")
+		return &api.IdentityTokenPayload{
+			Result: false,
+		}, nil
+	}
+
 	mySession := session.Must(session.NewSession())
 	serv := cognitoidentity.New(mySession)
 	iotCli := iot.New(mySession)
 
 	out, err := serv.GetOpenIdTokenForDeveloperIdentity(&cognitoidentity.GetOpenIdTokenForDeveloperIdentityInput{
-		// A unique identifier in the format REGION:GUID.
-		// IdentityId: aws.String("test:" + requester.Sub),
-
-		// An identity pool ID in the format REGION:GUID.
-		//
-		// IdentityPoolId is a required field
-		IdentityPoolId: aws.String("us-east-1:7f389607-e692-46bb-b358-2488187cd4ca"),
-
-		// A set of optional name-value pairs that map provider names to provider tokens.
-		// Each name-value pair represents a user from a public provider or developer
-		// provider. If the user is from a developer provider, the name-value pair will
-		// follow the syntax "developer_provider_name": "developer_user_identifier".
-		// The developer provider is the "domain" by which Cognito will refer to your
-		// users; you provided this domain while creating/updating the identity pool.
-		// The developer user identifier is an identifier from your backend that uniquely
-		// identifies a user. When you create an identity pool, you can specify the
-		// supported logins.
-		//
-		// Logins is a required field
-		Logins: map[string]*string{"demoIdentityProvider": aws.String(input.Input.Did)},
+		IdentityPoolId: aws.String(identityPoolId),
+		Logins:         map[string]*string{identityProviderName: aws.String(requester.Sub)},
 	})
 	if err != nil {
+		logger.Errorf("error getting openId token: %v", err)
 		return nil, fmt.Errorf("error getting token: %w", err)
 	}
 
 	_, err = iotCli.AttachPolicy(&iot.AttachPolicyInput{
-		PolicyName: aws.String("allAccess"),
+		PolicyName: aws.String(iotPolicyName),
 		Target:     out.IdentityId,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error getting token: %w", err)
+		logger.Errorf("error attaching policy: %v", err)
+		return nil, fmt.Errorf("error attching policy: %w", err)
 	}
 
-	return &api.LoginPayload{
+	return &api.IdentityTokenPayload{
 		Result: true,
 		Token:  *out.Token,
 		Id:     *out.IdentityId,
@@ -185,7 +174,7 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	resolver.LoginHandler = loginHandler
+	resolver.TokenHandler = tokenHandler
 
 	opts := []graphql.SchemaOpt{graphql.UseFieldResolvers(), graphql.MaxParallelism(20)}
 	schema, err := graphql.ParseSchema(api.Schema, resolver, opts...)
@@ -197,10 +186,11 @@ func init() {
 
 func main() {
 	log.Println("starting handler")
+	logging.SetLogLevel("*", "info")
 	lambda.Start(Handler)
 }
 
-var page = `
+var page = fmt.Sprintf(`
 <!DOCTYPE html>
 <html>
 	<head>
@@ -211,11 +201,11 @@ var page = `
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/16.2.0/umd/react-dom.production.min.js"></script>
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/graphiql/0.17.5/graphiql.min.js"></script>
 	</head>
-	<body style="width: 100%; height: 100%; margin: 0; overflow: hidden;">
+	<body style="width: 100%%; height: 100%%; margin: 0; overflow: hidden;">
 		<div id="graphiql" style="height: 100vh;">Loading...</div>
 		<script>
 			function graphQLFetcher(graphQLParams) {
-				return fetch("/demo/graphql", {
+				return fetch("/%s/graphql", {
 					method: "post",
 					body: JSON.stringify(graphQLParams),
 					credentials: "include",
@@ -236,4 +226,4 @@ var page = `
 		</script>
 	</body>
 </html>
-`
+`, deploymentStage)

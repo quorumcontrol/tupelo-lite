@@ -25,11 +25,11 @@ const IdentityContextKey = "tupelo-lite:identity"
 
 var logger = logging.Logger("resolver")
 
-type LoginFunc func(ctx context.Context, input LoginArg) (*LoginPayload, error)
+type TokenHandlerFunc func(ctx context.Context) (*IdentityTokenPayload, error)
 
 type Resolver struct {
 	Aggregator   *aggregator.Aggregator
-	LoginHandler LoginFunc
+	TokenHandler TokenHandlerFunc
 }
 
 func NewResolver(ctx context.Context, ds datastore.Batching) (*Resolver, error) {
@@ -60,7 +60,7 @@ type ResolvePayload struct {
 	TouchedBlocks *[]Block
 }
 
-type LoginPayload struct {
+type IdentityTokenPayload struct {
 	Result bool
 	Token  string
 	Id     string
@@ -69,12 +69,6 @@ type LoginPayload struct {
 type AddBlockInput struct {
 	Input struct {
 		AddBlockRequest string //base64
-	}
-}
-
-type LoginArg struct {
-	Input struct {
-		Did string
 	}
 }
 
@@ -89,7 +83,7 @@ type AddBlockPayload struct {
 	NewBlocks *[]Block
 }
 
-func requesterFromCtx(ctx context.Context) *identity.Identity {
+func RequesterFromCtx(ctx context.Context) *identity.Identity {
 	var requester *identity.Identity
 	switch identityInter := ctx.Value(IdentityContextKey).(type) {
 	case identity.Identity:
@@ -101,7 +95,7 @@ func requesterFromCtx(ctx context.Context) *identity.Identity {
 }
 
 func (r *Resolver) Resolve(ctx context.Context, input ResolveInput) (*ResolvePayload, error) {
-	requester := requesterFromCtx(ctx)
+	requester := RequesterFromCtx(ctx)
 	logger.Infof("resolving %s %s with requester %v", input.Input.Did, input.Input.Path, requester)
 	path := strings.Split(strings.TrimPrefix(input.Input.Path, "/"), "/")
 
@@ -170,11 +164,11 @@ func blocksToGraphQLBlocks(nodes []format.Node) []Block {
 	return retBlocks
 }
 
-func (r *Resolver) Login(ctx context.Context, input LoginArg) (*LoginPayload, error) {
-	if r.LoginHandler == nil {
-		return nil, fmt.Errorf("undefined login handler")
+func (r *Resolver) IdentityToken(ctx context.Context) (*IdentityTokenPayload, error) {
+	if r.TokenHandler == nil {
+		return nil, fmt.Errorf("undefined token handler")
 	}
-	return r.LoginHandler(ctx, input)
+	return r.TokenHandler(ctx)
 }
 
 func (r *Resolver) AddBlock(ctx context.Context, input AddBlockInput) (*AddBlockPayload, error) {

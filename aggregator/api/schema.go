@@ -20,7 +20,7 @@ type ResolvePayload {
 	touchedBlocks: [Block!]
 }
 
-type LoginPayload {
+type IdentityTokenPayload {
 	result: Boolean!
 	token: String!
 	id: String!
@@ -35,16 +35,12 @@ input AddBlockInput {
   addBlockRequest: String! # The serialized protobuf as base64
 }
 
-input LoginInput {
-	did: String!
-}
-
 type Query {
   resolve(input:ResolveInput!):ResolvePayload
+  identityToken:IdentityTokenPayload
 }
 
 type Mutation {
   addBlock(input:AddBlockInput!):AddBlockPayload
-  login(input:LoginInput!):LoginPayload
 }
 `

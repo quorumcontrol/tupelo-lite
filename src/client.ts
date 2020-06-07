@@ -32,6 +32,12 @@ export interface IClientResolveResponse {
     errors?: any
 }
 
+export interface IClientIdentityToken {
+    result: boolean
+    token: string
+    id: string
+}
+
 export async function updateChainTreeWithResponse(tree: ChainTree, resp: IAddBlockResponse) {
     const blocks = await graphQLtoBlocks(resp.newBlocks)
     await tree.store.putMany(blocks)
@@ -49,7 +55,6 @@ export function graphQLtoBlocks(graphQLBlocks: IGraphqlBlock[]):Promise<IBlock[]
         return new Block(bits, cid)
     }))
 }
-
 
 export function bytesToBlocks(bufs: Uint8Array[]): Promise<IBlock[]> {
     return Promise.all(bufs.map(async (nodeBuf) => {
@@ -168,6 +173,15 @@ export class Client {
         }
     }
 
+    async identityToken():Promise<IClientIdentityToken> {
+        const resp = await this.apollo.query({
+            query: identityTokenQuery,
+            fetchPolicy: 'network-only',
+        })
+        console.log("identityTokenResponse: ", resp)
+        return resp.data.identityToken
+    }
+
     async resolve(did:string, path:string, opts?:IResolveOptions):Promise<IClientResolveResponse> {
         log(`resolve did: ${did} ${path}`)
         try {
@@ -197,6 +211,16 @@ export class Client {
         
     }
 }
+
+const identityTokenQuery = gql`
+    query {
+        identityToken {
+            result
+	        token
+	        id
+        }
+    }
+`
 
 const resolveQueryNoBlocks = gql`
 query resolve($did: String!, $path: String!) {

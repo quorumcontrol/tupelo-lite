@@ -20,7 +20,7 @@ import (
 
 var logger = logging.Logger("identity")
 
-const IdentityHeaderField = "X-Tupelo-Id"
+const IdentityHeaderField = "x-tupelo-id"
 
 func init() {
 	cbornode.RegisterCborType(Identity{})
