@@ -53,7 +53,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	r, err := api.NewResolver(ctx, aggregator.NewMemoryStore())
+	r, err := api.NewResolver(ctx, &api.Config{KeyValueStore: aggregator.NewMemoryStore()})
 	if err != nil {
 		panic(err)
 	}

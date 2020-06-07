@@ -170,7 +170,7 @@ func tokenHandler(ctx context.Context) (*api.IdentityTokenPayload, error) {
 func init() {
 	log.Println("init")
 	ctx := context.Background()
-	resolver, err := api.NewResolver(ctx, getDatastore())
+	resolver, err := api.NewResolver(ctx, &api.Config{KeyValueStore: getDatastore()})
 	if err != nil {
 		panic(err)
 	}

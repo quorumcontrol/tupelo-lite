@@ -19,7 +19,7 @@ func TestTouchedNodes(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	r, err := NewResolver(ctx, aggregator.NewMemoryStore())
+	r, err := NewResolver(ctx, &Config{KeyValueStore: aggregator.NewMemoryStore()})
 	require.Nil(t, err)
 
 	opts := []graphql.SchemaOpt{graphql.UseFieldResolvers()}
@@ -69,7 +69,7 @@ func TestSanity(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	r, err := NewResolver(ctx, aggregator.NewMemoryStore())
+	r, err := NewResolver(ctx, &Config{KeyValueStore: aggregator.NewMemoryStore()})
 	require.Nil(t, err)
 
 	opts := []graphql.SchemaOpt{graphql.UseFieldResolvers()}

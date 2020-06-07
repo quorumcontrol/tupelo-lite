@@ -32,13 +32,18 @@ type Resolver struct {
 	TokenHandler TokenHandlerFunc
 }
 
-func NewResolver(ctx context.Context, ds datastore.Batching) (*Resolver, error) {
+type Config struct {
+	KeyValueStore datastore.Batching
+	UpdateChannel aggregator.UpdateChan
+}
+
+func NewResolver(ctx context.Context, config *Config) (*Resolver, error) {
 	defaultConfig := types.DefaultConfig()
 	defaultConfig.ValidatorGenerators = append(defaultConfig.ValidatorGenerators, policy.ValidatorGenerator)
 	defaultConfig.ID = "aggregator"
 	ng := types.NewNotaryGroupFromConfig(defaultConfig)
 
-	agg, err := aggregator.NewAggregator(ctx, &aggregator.AggregatorConfig{KeyValueStore: ds, Group: ng})
+	agg, err := aggregator.NewAggregator(ctx, &aggregator.AggregatorConfig{KeyValueStore: config.KeyValueStore, Group: ng, UpdateChannel: config.UpdateChannel})
 	if err != nil {
 		return nil, fmt.Errorf("error creating aggregator: %w", err)
 	}
