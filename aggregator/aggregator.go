@@ -152,6 +152,11 @@ func (a *Aggregator) Add(ctx context.Context, abr *services.AddBlockRequest) (*A
 	if err != nil {
 		return nil, fmt.Errorf("error putting key: %w", err)
 	}
+
+	if a.updateChan != nil {
+		a.updateChan <- wrapper
+	}
+
 	return &AddResponse{
 		NewTip:   newTip,
 		IsValid:  isValid,

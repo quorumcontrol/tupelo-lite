@@ -21,6 +21,30 @@ func TestNewAggregator(t *testing.T) {
 	require.Nil(t, err)
 }
 
+func TestPublishingNewAbrs(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ng := types.NewNotaryGroup("testnotary")
+
+	updateChan := make(UpdateChan, 1)
+
+	agg, err := NewAggregator(ctx, &AggregatorConfig{
+		KeyValueStore: NewMemoryStore(),
+		Group:         ng,
+		UpdateChannel: updateChan,
+	})
+	require.Nil(t, err)
+
+	abr := testhelpers.NewValidTransaction(t)
+
+	_, err = agg.Add(ctx, &abr)
+	require.Nil(t, err)
+
+	resp := <-updateChan
+	require.Equal(t, resp.GetNewTip(), abr.NewTip)
+}
+
 func TestAddingAbrs(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -87,6 +111,7 @@ func TestGetLatest(t *testing.T) {
 	})
 }
 
+// BenchmarkSimplePolicy-12    	  114720	     10503 ns/op	    3863 B/op	      95 allocs/op
 func BenchmarkSimplePolicy(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -99,15 +124,10 @@ func BenchmarkSimplePolicy(b *testing.B) {
 	treeKey, err := crypto.GenerateKey()
 	require.Nil(b, err)
 
-	abr1 := testhelpers.NewValidTransactionWithPathAndValue(b, treeKey, "/.well-known/policy",
-		`package example.authz
-
-default allow = false
-
-allow {
-	input.method = "GET"
-}
-`)
+	abr1 := testhelpers.NewValidTransactionWithPathAndValue(b, treeKey, "/.well-known/policies/main",
+		`package main
+		allow = true
+	`)
 	_, err = agg.Add(ctx, &abr1)
 	require.Nil(b, err)
 
