@@ -32,6 +32,7 @@ export class PolicyTree extends ChainTree {
                 const currHeight = (await this.resolve("/chain/end/height")).value || 0
                 if (msg.value.height >= currHeight) {
                     this.tip = new CID(msg.value.newTip['/'])
+                    this.events.emit('update')
                 }
             },
             error: (err) => {
