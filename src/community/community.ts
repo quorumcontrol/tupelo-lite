@@ -1,5 +1,5 @@
 import debug from 'debug'
-import { Client,updateChainTreeWithResponse } from '../client'
+import { Client,updateChainTreeWithResponse, ClientOpts } from '../client'
 import { Repo } from '../repo'
 import { ChainTree, IBlockService } from '../chaintree'
 import { Transaction } from 'tupelo-messages/transactions/transactions_pb'
@@ -19,8 +19,8 @@ export class Community {
     repo:Repo
     blockservice:IBlockService
 
-    constructor(url:string, repo:Repo) {
-        this.client = new Client(url)
+    constructor(url:string, repo:Repo, opts?:ClientOpts) {
+        this.client = new Client(url, opts)
         this.repo = repo
         this.blockservice = repo.toBlockservice()
     }

@@ -1,6 +1,10 @@
 import { ChainTree, IChainTreeInitializer, IBlockService, IResolveOptions, IResolveResponse } from "../chaintree";
-import { Client } from "../client";
+import { Client, Subscription } from "../client";
+import { EventEmitter } from "events";
+import debug from 'debug';
+import CID from "cids";
 
+const log = debug("policytree")
 
 export interface IPolicyTreeInitializer extends IChainTreeInitializer {
     client: Client
@@ -12,10 +16,28 @@ export interface IPolicyTreeInitializer extends IChainTreeInitializer {
 export class PolicyTree extends ChainTree {
 
     client: Client
+    events: EventEmitter
 
     constructor(opts: IPolicyTreeInitializer) {
         super(opts)
         this.client = opts.client
+        this.events = new EventEmitter()
+    }
+
+    async subscribe(): Promise<Subscription> {
+        return this.client.subscribe({
+            topic: `public/trees/${(await this.id())}`,
+            next: async (msg) => {
+                log("msg: ", msg)
+                const currHeight = (await this.resolve("/chain/end/height")).value || 0
+                if (msg.value.height >= currHeight) {
+                    this.tip = new CID(msg.value.newTip['/'])
+                }
+            },
+            error: (err) => {
+                log("subscription err: ", err)
+            }
+        })
     }
 
     async resolve(path: string, opts?: IResolveOptions): Promise<IResolveResponse> {
@@ -25,7 +47,7 @@ export class PolicyTree extends ChainTree {
         } catch (e) {
             if (e.message.includes("Not Found")) {
                 try {
-                    const clientResp = await this.client.resolve((await this.id())!, path, {...opts, touchedBlocks: true})
+                    const clientResp = await this.client.resolve((await this.id())!, path, { ...opts, touchedBlocks: true })
                     this.store.putMany(clientResp.touchedBlocks!)
                     return {
                         value: clientResp.value,
@@ -35,7 +57,7 @@ export class PolicyTree extends ChainTree {
                 } catch (e) {
                     throw e
                 }
-                
+
             }
             throw e
         }

@@ -6,15 +6,21 @@ import { IClientIdentityToken } from '../client';
 declare const global: any;
 global.WebSocket = WebSocket;
 
+export const defaultAwsConfig = {
+    region: 'us-east-1',
+    endpoint: 'wss://a1jse42egazw1y.iot.us-east-1.amazonaws.com/mqtt',
+    identityPoolID: 'us-east-1:7f389607-e692-46bb-b358-2488187cd4ca',
+}
+
 // TODO: fetch this from configuration
 
-interface AWSOptions {
+export interface AWSOptions {
     region: string
     endpoint: string
     identityPoolID: string
 }
 
-interface LocalOpts {
+export interface LocalOpts {
     endpoint: string
 }
 
@@ -29,17 +35,14 @@ export async function configurePubSubForLocal(opts: LocalOpts) {
 export async function configurePubSubForAWS(opts: AWSOptions) {
     // Apply plugin with configuration
     Amplify.addPluggable(new AWSIoTProvider({
-        aws_pubsub_region: 'us-east-1',
-        aws_pubsub_endpoint: 'wss://a1jse42egazw1y.iot.us-east-1.amazonaws.com/mqtt',
+        aws_pubsub_region: opts.region,
+        aws_pubsub_endpoint: opts.endpoint,
     }));
 
     Amplify.configure({
         Auth: {
-            // REQUIRED only for Federated Authentication - Amazon Cognito Identity Pool ID
-            identityPoolId: 'us-east-1:7f389607-e692-46bb-b358-2488187cd4ca',
-
-            // REQUIRED - Amazon Cognito Region
-            region: 'us-east-1',
+            identityPoolId: opts.identityPoolID,
+            region: opts.region,
         }
     });
 }

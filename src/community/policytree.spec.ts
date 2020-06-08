@@ -11,6 +11,44 @@ import { setDataTransaction } from '../chaintree';
 
 describe("PolicyTree", ()=> {
 
+    it('subscribes', async ()=> {
+        const r = await Repo.memoryRepo("policytree-subscribes")
+        const r2 = await Repo.memoryRepo("policytree-subscribes2")
+        const community = new Community(localURL, r)
+        const community2 = new Community(localURL, r, {pubSub: {type: "LOCAL", config: {endpoint: "ws://127.0.0.1:8081/mqtt"}}})
+
+        const c = community.client
+
+        const key = EcdsaKey.generate()
+        const tree = await community.newEmptyTree(key)
+        const id = await tree.id()
+        if (id == null) {
+            throw new Error("error getting id")
+        }
+        await community.playTransactions(tree, [setDataTransaction("/hi", "hihi")])
+        const respTip = await community.getTip(id)
+        expect(respTip.toString()).to.equal(tree.tip.toString())
+
+        const tree2 = await community2.getLatest(id)
+        const sub = await tree2.subscribe()
+
+        await community.playTransactions(tree, [setDataTransaction("/hi", "updated")])
+
+        return new Promise((resolve,reject)=> {
+            setTimeout(async ()=> {
+                  // test that tree2 got the updated trasaction through the subscription
+                  try {
+                    expect((await tree2.resolveData("/hi")).value).to.equal("updated")
+                  } catch(e) {
+                      reject(e)
+                  }
+                  sub.unsubscribe()
+                  resolve()
+            }, 200)
+        })
+      
+    })
+
     it('resolves using remote resolve', async ()=> {
 
         const r = await Repo.memoryRepo("policytree-resolves")

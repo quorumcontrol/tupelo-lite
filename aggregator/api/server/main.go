@@ -70,9 +70,16 @@ func Setup() *api.Resolver {
 	}
 
 	// TODO: publish this to an mqtt broker
-	updateChan, err := publisher.StartPublishing(ctx, func(ctx context.Context, topic string, payload []byte) error {
+	updateChan, err := publisher.StartPublishing(ctx, func(ctx context.Context, topic string, msg string) error {
 		logger.Debugf("updated: %s", topic)
-		cli.Publish(topic, byte(0), false, payload)
+		tok := cli.Publish(topic, byte(0), false, msg)
+		go func() {
+			tok.Wait()
+			logger.Debugf("published")
+			err := tok.Error()
+			logger.Errorf("error publishing: %v", err)
+		}()
+
 		return nil
 	})
 	if err != nil {

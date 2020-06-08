@@ -190,10 +190,10 @@ func init() {
 	iotCli = iot.New(mySession)
 	iotDataCli = iotdataplane.New(mySession)
 
-	updateCh, err := publisher.StartPublishing(ctx, func(ctx context.Context, topic string, bits []byte) error {
+	updateCh, err := publisher.StartPublishing(ctx, func(ctx context.Context, topic string, msg string) error {
 		_, err := iotDataCli.Publish(&iotdataplane.PublishInput{
 			Topic:   aws.String(topic),
-			Payload: bits,
+			Payload: []byte(msg),
 		})
 		if err != nil {
 			logger.Errorf("error publishing", err)

@@ -2,14 +2,14 @@ package publisher
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
+	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
 
 	cbornode "github.com/ipfs/go-ipld-cbor"
 	format "github.com/ipfs/go-ipld-format"
-	"github.com/quorumcontrol/chaintree/safewrap"
-	"github.com/quorumcontrol/messages/v2/build/go/services"
 	"github.com/quorumcontrol/tupelo-lite/aggregator"
 )
 
@@ -21,8 +21,9 @@ func init() {
 
 // AddBlockMessage is sent to the message queue for every update
 type AddBlockMessage struct {
-	AddBlockRequest *services.AddBlockRequest
-	NewBlocks       [][]byte
+	Did    string  `json:"did"`
+	NewTip cid.Cid `json:"newTip"`
+	Height uint64  `json:"height"`
 }
 
 func blocksToBytes(blocks []format.Node) [][]byte {
@@ -35,7 +36,7 @@ func blocksToBytes(blocks []format.Node) [][]byte {
 
 // MessageQueueFunc is the most basic "message queue" function - the edge of the internal system that takes a topic and bytes
 // and sends them along
-type MessageQueueFunc func(ctx context.Context, topic string, bits []byte) error
+type MessageQueueFunc func(ctx context.Context, topic string, msg string) error
 
 // StartPublishing takes the actual basic publisherFunc (the one that sends bits to a topic) and then will setup the goroutine, etc
 // to call that function with the correct formats.
@@ -46,19 +47,24 @@ func StartPublishing(ctx context.Context, publishFunc MessageQueueFunc) (aggrega
 	go func() {
 		for {
 			// a new safewrap in case there are errors
-			sw := &safewrap.SafeWrap{}
+			// sw := &safewrap.SafeWrap{}
 			wrapper := <-updateCh
 
-			addBlockMessage := &AddBlockMessage{
-				AddBlockRequest: wrapper.AddBlockRequest,
-				NewBlocks:       blocksToBytes(wrapper.NewNodes),
-			}
-			wrapped := sw.WrapObject(addBlockMessage)
-			if sw.Err != nil {
-				logger.Errorf("error wrapping: %v", sw.Err)
+			tip, err := cid.Cast(wrapper.NewTip)
+			if err != nil {
+				logger.Errorf("error casting: %v", err)
 				continue
 			}
-			err := publishFunc(ctx, fmt.Sprintf("public/trees/%s", string(wrapper.ObjectId)), wrapped.RawData())
+
+			addBlockMessage := &AddBlockMessage{
+				Did:    string(wrapper.ObjectId),
+				NewTip: tip,
+				Height: wrapper.Height,
+			}
+
+			bits, err := json.Marshal(addBlockMessage)
+
+			err = publishFunc(ctx, fmt.Sprintf("public/trees/%s", string(wrapper.ObjectId)), string(bits))
 			if err != nil {
 				logger.Errorf("error publishing: %v", err)
 				continue

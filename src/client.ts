@@ -1,12 +1,14 @@
-import {ApolloClient, HttpLink, gql, throwServerError} from '@apollo/client'
+import { ApolloClient, HttpLink, gql } from '@apollo/client'
 import { InMemoryCache } from '@apollo/client/cache';
 import { AddBlockRequest } from 'tupelo-messages';
 import fetch from 'cross-fetch'
-import { ChainTree, IBlock,IResolveOptions } from './chaintree';
+import { ChainTree, IBlock, IResolveOptions } from './chaintree';
 import CID from 'cids';
 import debug from 'debug';
 import { setContext } from '@apollo/link-context';
 import { EcdsaKey } from './ecdsa';
+import { LocalOpts, AWSOptions, configurePubSubForAWS, configurePubSubForLocal, authenticatePubsub } from './pubsub/mqtt'
+import { PubSub } from 'aws-amplify';
 
 const dagCBOR = require('ipld-dag-cbor');
 const Block = require('ipld-block');
@@ -45,11 +47,11 @@ export async function updateChainTreeWithResponse(tree: ChainTree, resp: IAddBlo
     return
 }
 
-export function graphQLtoBlocks(graphQLBlocks: IGraphqlBlock[]):Promise<IBlock[]> {
+export function graphQLtoBlocks(graphQLBlocks: IGraphqlBlock[]): Promise<IBlock[]> {
     if (!graphQLBlocks) {
         return Promise.resolve([])
     }
-    return Promise.all(graphQLBlocks.map(async (blk)=> {
+    return Promise.all(graphQLBlocks.map(async (blk) => {
         const bits = Buffer.from(blk.data, 'base64')
         let cid = await dagCBOR.util.cid(bits)
         return new Block(bits, cid)
@@ -64,6 +66,8 @@ export function bytesToBlocks(bufs: Uint8Array[]): Promise<IBlock[]> {
     }))
 }
 
+export type Subscription = ZenObservable.Subscription
+
 // see note in golang aggregator
 interface Identity {
     iss: string
@@ -77,53 +81,101 @@ interface IdentityWithSignature extends Identity {
     signature: Uint8Array
 }
 
-export class Client {
-    apollo:ApolloClient<any> // TODO: do we need to support the cache shape?
-    private identity?:Identity
-    private key?:EcdsaKey
+export interface PubSubConfig {
+    config: LocalOpts | AWSOptions
+    type: "AWS" | "LOCAL"
+}
 
-    constructor(url:string) {
+export interface ClientOpts {
+    pubSub?: PubSubConfig
+}
+
+interface ISubscribeOpts {
+    topic: string
+    next: (data: any) => any
+    error: (err: any) => any
+    complete?: () => any
+}
+
+function configPubSub(config: PubSubConfig) {
+    switch (config.type) {
+        case "AWS":
+            configurePubSubForAWS(config.config as AWSOptions)
+            break;
+        case "LOCAL":
+            configurePubSubForLocal(config.config as LocalOpts)
+    }
+}
+
+export class Client {
+    apollo: ApolloClient<any> // TODO: do we need to support the cache shape?
+    private identity?: Identity
+    private key?: EcdsaKey
+    config: ClientOpts
+    supportsPubsub: boolean
+
+    constructor(url: string, opts: ClientOpts = {}) {
         // Instantiate required constructor fields
         const cache = new InMemoryCache();
         const link = new HttpLink({
-          uri: url,
-          fetch: fetch,
+            uri: url,
+            fetch: fetch,
         });
 
         const authLink = this.getAuthLink()
 
-        const client = new ApolloClient({
-          // Provide required constructor fields
-          cache: cache,
-          link: authLink.concat(link),
+        this.config = opts
+
+        const apollo = new ApolloClient({
+            // Provide required constructor fields
+            cache: cache,
+            link: authLink.concat(link),
         });
-        this.apollo = client
+        this.apollo = apollo
+        this.supportsPubsub = false
+        // we can configure pubsub if it exists
+        if (opts.pubSub) {
+            this.supportsPubsub = true
+            configPubSub(opts.pubSub)
+        }
     }
 
-    identify(did:string,key:EcdsaKey) {
+    identify(did: string, key: EcdsaKey) {
         const now = new Date()
         this.identity = {
-            iss:did,
+            iss: did,
             sub: did,
             iat: now.getTime() + (now.getTimezoneOffset() * 60000),
-            aud: "",
+            aud: "", // TODO: should add an aud here
         }
         this.key = key
+        // TODO: all this should be abstracted away from client so it doesn't have to worry about
+        // pubsub at all
+        // if we have an AWS config for pubsub then go ahead and start the auth process
+        if (this.config.pubSub?.type === "AWS") {
+            this.loginToAWS()
+        }
     }
 
-    private async signedIdentity():Promise<undefined|IdentityWithSignature> {
+    private async loginToAWS(): Promise<void> {
+        const token = await this.identityToken()
+        authenticatePubsub(this.identity?.sub!, token)
+        return
+    }
+
+    private async signedIdentity(): Promise<undefined | IdentityWithSignature> {
         if (!this.identity || !this.key) {
             return undefined
         }
         const now = new Date()
 
-        const identity = {...this.identity, exp: now.getTime() + (now.getTimezoneOffset() * 60000) + 10000}
+        const identity = { ...this.identity, exp: now.getTime() + (now.getTimezoneOffset() * 60000) + 10000 }
         log("identity: ", identity)
         const sigResp = await this.key.signObject(identity)
-        return {...identity, signature: sigResp.signature}
+        return { ...identity, signature: sigResp.signature }
     }
 
-    private async identityHeaderString():Promise<undefined|string> {
+    private async identityHeaderString(): Promise<undefined | string> {
         const ident = await this.signedIdentity()
         if (!ident) {
             return undefined
@@ -134,19 +186,32 @@ export class Client {
     private getAuthLink() {
         const getIdentityString = this.identityHeaderString.bind(this)
 
-        return setContext(async (_, { headers }) => {;
+        return setContext(async (_, { headers }) => {
             // return the headers to the context so httpLink can read them
             const token = await getIdentityString()
             return {
-              headers: {
-                ...headers,
-                [identityHeaderField]: token ? token : "",
-              }
+                headers: {
+                    ...headers,
+                    [identityHeaderField]: token ? token : "",
+                }
             }
-          });
+        });
     }
 
-    async addBlock(abr:AddBlockRequest):Promise<IAddBlockResponse> {
+    subscribe(opts: ISubscribeOpts): Subscription {
+        if (!this.supportsPubsub) {
+            throw new Error("client must support pubsub")
+        }
+
+        log("subscribing : ", opts.topic)
+        return PubSub.subscribe(opts.topic).subscribe({
+            next: opts.next,
+            error: opts.error,
+            complete: opts.complete || (() => { }),
+        });
+    }
+
+    async addBlock(abr: AddBlockRequest): Promise<IAddBlockResponse> {
         try {
             const resp = await this.apollo.mutate({
                 mutation: gql`
@@ -168,13 +233,13 @@ export class Client {
                 ...resp.data.addBlock,
                 errors: resp.errors
             }
-        } catch(err) {
+        } catch (err) {
             console.error("addBlock error: ", err)
             throw err
         }
     }
 
-    async identityToken():Promise<IClientIdentityToken> {
+    async identityToken(): Promise<IClientIdentityToken> {
         const resp = await this.apollo.query({
             query: identityTokenQuery,
             fetchPolicy: 'network-only',
@@ -182,7 +247,7 @@ export class Client {
         return resp.data.identityToken
     }
 
-    async resolve(did:string, path:string, opts?:IResolveOptions):Promise<IClientResolveResponse> {
+    async resolve(did: string, path: string, opts?: IResolveOptions): Promise<IClientResolveResponse> {
         log(`resolve did: ${did} ${path}`)
         try {
             const resp = await this.apollo.query({
@@ -193,22 +258,22 @@ export class Client {
                 },
                 fetchPolicy: 'network-only',
             })
-    
-            let blocks:IBlock[] = []
+
+            let blocks: IBlock[] = []
             if (resp.data.resolve.touchedBlocks) {
                 blocks = await graphQLtoBlocks(resp.data.resolve.touchedBlocks)
             }
-    
+
             return {
                 ...resp.data.resolve,
-                touchedBlocks:blocks,
+                touchedBlocks: blocks,
                 errors: resp.errors
             }
         } catch (err) {
             log(`resolve did: ${did} ${path}, err: `, err)
             throw err
         }
-        
+
     }
 }
 

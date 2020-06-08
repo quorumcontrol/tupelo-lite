@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	cbornode "github.com/ipfs/go-ipld-cbor"
 	"github.com/quorumcontrol/tupelo-lite/aggregator/api/publisher"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/testhelpers"
 	"github.com/stretchr/testify/require"
@@ -46,7 +46,7 @@ func TestPublishesToMqtt(t *testing.T) {
 	updateMsg := <-resp
 
 	update := &publisher.AddBlockMessage{}
-	err = cbornode.DecodeInto(updateMsg.Payload(), update)
+	json.Unmarshal(updateMsg.Payload(), update)
 	require.Nil(t, err)
-	require.Equal(t, update.AddBlockRequest.ObjectId, abr.ObjectId)
+	require.Equal(t, update.Did, string(abr.ObjectId))
 }

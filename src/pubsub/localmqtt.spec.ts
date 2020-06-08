@@ -14,7 +14,7 @@ describe("local mqtt", ()=> {
     it("publishes and subscribes", ()=> {
         return new Promise(async (resolve,reject) => {
 
-            PubSub.subscribe('public/userToUser/test').subscribe({
+            PubSub.subscribe('public/userToUser/did:test:test').subscribe({
                 next: data => { log('Message received', data); resolve() },
                 error: error => log("sub error: ", error),
                 complete: () => log('Done'),
@@ -22,7 +22,7 @@ describe("local mqtt", ()=> {
             log("subscribed")
             setTimeout(async ()=> {
                 try {
-                    await PubSub.publish('public/userToUser/test', { msg: 'Hello to all subscribers!' });
+                    await PubSub.publish('public/userToUser/did:test:test', { msg: 'Hello to all subscribers!' });
                 } catch(e) {
                     console.error("error: ", e)
                     reject(e)
