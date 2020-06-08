@@ -27,7 +27,6 @@ import (
 var (
 	// ErrQueryNameNotProvided is thrown when no query name is provided in a request
 	ErrQueryNameNotProvided = errors.New("no query was provided in the HTTP body")
-	mainSchema              *graphql.Schema
 	identityPoolID          = os.Getenv("IDENTITY_POOL")
 	identityProviderName    = os.Getenv("IDENTITY_PROVIDER_NAME")
 	deploymentStage         = os.Getenv("STAGE")
@@ -35,6 +34,9 @@ var (
 	dynamoTableName         = os.Getenv("TABLE_NAME")
 
 	logger = logging.Logger("handler.Main")
+
+	mainSchema  *graphql.Schema
+	appResolver *api.Resolver
 )
 
 func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -90,7 +92,17 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 		if ident != nil {
 			//TODO: this can probably be debug
 			logger.Infof("identity: %s", ident.Sub)
-			ctx = context.WithValue(ctx, api.IdentityContextKey, ident.Identity)
+			isVerified, err := ident.Verify(ctx, appResolver.Aggregator)
+			if err != nil {
+				logger.Errorf("error verifying: %v", err)
+				return events.APIGatewayProxyResponse{
+					Body:       fmt.Sprintf("error verifying: %v", err),
+					StatusCode: 500,
+				}, nil
+			}
+			if isVerified {
+				ctx = context.WithValue(ctx, api.IdentityContextKey, ident.Identity)
+			}
 		}
 	}
 
@@ -182,6 +194,7 @@ func init() {
 		panic(err)
 	}
 	mainSchema = schema
+	appResolver = resolver
 }
 
 func main() {
