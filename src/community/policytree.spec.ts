@@ -15,9 +15,7 @@ describe("PolicyTree", ()=> {
         const r = await Repo.memoryRepo("policytree-subscribes")
         const r2 = await Repo.memoryRepo("policytree-subscribes2")
         const community = new Community(localURL, r)
-        const community2 = new Community(localURL, r, {pubSub: {type: "LOCAL", config: {endpoint: "ws://127.0.0.1:8081/mqtt"}}})
-
-        const c = community.client
+        const community2 = new Community(localURL, r2, {pubSub: {type: "LOCAL", config: {endpoint: "ws://127.0.0.1:8081/mqtt"}}})
 
         const key = EcdsaKey.generate()
         const tree = await community.newEmptyTree(key)
@@ -35,16 +33,16 @@ describe("PolicyTree", ()=> {
         await community.playTransactions(tree, [setDataTransaction("/hi", "updated")])
 
         return new Promise((resolve,reject)=> {
-            setTimeout(async ()=> {
-                  // test that tree2 got the updated trasaction through the subscription
-                  try {
-                    expect((await tree2.resolveData("/hi")).value).to.equal("updated")
+            tree2.events.on('update', async ()=> {
+                 // test that tree2 got the updated trasaction through the subscription
+                 try {
+                    expect((await tree2.resolveData("hi")).value).to.equal("updated")
                   } catch(e) {
                       reject(e)
                   }
                   sub.unsubscribe()
                   resolve()
-            }, 200)
+            })
         })
       
     })

@@ -32,6 +32,11 @@ export class PolicyTree extends ChainTree {
                 const currHeight = (await this.resolve("/chain/end/height")).value || 0
                 if (msg.value.height >= currHeight) {
                     this.tip = new CID(msg.value.newTip['/'])
+                    const clientResp = await this.client.resolve(msg.value.did, "/", {touchedBlocks: true })
+                    this.store.putMany(clientResp.touchedBlocks!)
+                    const clientResp2 = await this.client.resolve(msg.value.did, "/chain/end", {touchedBlocks: true })
+                    this.store.putMany(clientResp2.touchedBlocks!)
+
                     this.events.emit('update')
                 }
             },
@@ -47,9 +52,11 @@ export class PolicyTree extends ChainTree {
             return resp
         } catch (e) {
             if (e.message.includes("Not Found")) {
+                log("not found, going to server: ", path)
                 try {
                     const clientResp = await this.client.resolve((await this.id())!, path, { ...opts, touchedBlocks: true })
                     this.store.putMany(clientResp.touchedBlocks!)
+                    log("resp: ", path, clientResp)
                     return {
                         value: clientResp.value,
                         remainderPath: clientResp.remainderPath,
