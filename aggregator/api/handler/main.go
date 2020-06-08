@@ -16,11 +16,13 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cognitoidentity"
 	"github.com/aws/aws-sdk-go/service/iot"
+	"github.com/aws/aws-sdk-go/service/iotdataplane"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/ipfs/go-datastore"
 	dynamods "github.com/quorumcontrol/go-ds-dynamodb"
 	"github.com/quorumcontrol/tupelo-lite/aggregator"
 	"github.com/quorumcontrol/tupelo-lite/aggregator/api"
+	"github.com/quorumcontrol/tupelo-lite/aggregator/api/publisher"
 	"github.com/quorumcontrol/tupelo-lite/aggregator/identity"
 )
 
@@ -37,6 +39,10 @@ var (
 
 	mainSchema  *graphql.Schema
 	appResolver *api.Resolver
+
+	identityCli *cognitoidentity.CognitoIdentity
+	iotCli      *iot.IoT
+	iotDataCli  *iotdataplane.IoTDataPlane
 )
 
 func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -150,11 +156,7 @@ func tokenHandler(ctx context.Context) (*api.IdentityTokenPayload, error) {
 		}, nil
 	}
 
-	mySession := session.Must(session.NewSession())
-	serv := cognitoidentity.New(mySession)
-	iotCli := iot.New(mySession)
-
-	out, err := serv.GetOpenIdTokenForDeveloperIdentity(&cognitoidentity.GetOpenIdTokenForDeveloperIdentityInput{
+	out, err := identityCli.GetOpenIdTokenForDeveloperIdentity(&cognitoidentity.GetOpenIdTokenForDeveloperIdentityInput{
 		IdentityPoolId: aws.String(identityPoolID),
 		Logins:         map[string]*string{identityProviderName: aws.String(requester.Sub)},
 	})
@@ -182,7 +184,25 @@ func tokenHandler(ctx context.Context) (*api.IdentityTokenPayload, error) {
 func init() {
 	log.Println("init")
 	ctx := context.Background()
-	resolver, err := api.NewResolver(ctx, &api.Config{KeyValueStore: getDatastore()})
+
+	mySession := session.Must(session.NewSession())
+	identityCli = cognitoidentity.New(mySession)
+	iotCli = iot.New(mySession)
+	iotDataCli = iotdataplane.New(mySession)
+
+	updateCh, err := publisher.StartPublishing(ctx, func(ctx context.Context, topic string, bits []byte) error {
+		_, err := iotDataCli.Publish(&iotdataplane.PublishInput{
+			Topic:   aws.String(topic),
+			Payload: bits,
+		})
+		if err != nil {
+			logger.Errorf("error publishing", err)
+			return err
+		}
+		return nil
+	})
+
+	resolver, err := api.NewResolver(ctx, &api.Config{KeyValueStore: getDatastore(), UpdateChannel: updateCh})
 	if err != nil {
 		panic(err)
 	}

@@ -179,7 +179,6 @@ export class Client {
             query: identityTokenQuery,
             fetchPolicy: 'network-only',
         })
-        console.log("identityTokenResponse: ", resp)
         return resp.data.identityToken
     }
 

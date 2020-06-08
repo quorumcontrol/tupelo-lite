@@ -2,15 +2,16 @@ import 'mocha';
 import {expect} from 'chai';
 import './mqtt'; // for the side effect of configuring Amplify
 import { PubSub, Auth } from 'aws-amplify';
-import {Repo} from '../../repo';
-import {Community} from '../../community/community';
+import {Repo} from '../repo';
+import {Community} from '../community/community';
 import { authenticatePubsub } from './mqtt';
-import { setDataTransaction, ChainTree } from '../../chaintree';
-import { EcdsaKey } from '../../ecdsa';
+import { setDataTransaction, ChainTree } from '../chaintree';
+import { EcdsaKey } from '../ecdsa';
 
 const api = 'https://a7s7o22i6d.execute-api.us-east-1.amazonaws.com/demo/graphql';
 
-describe("MQTT", ()=> {
+//Skipping because this is real network calls
+describe.skip("AWS MQTT", ()=> {
 
     it('does not error', async ()=> {
         const repo = await Repo.memoryRepo("mqttSanity")

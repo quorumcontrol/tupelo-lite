@@ -13,6 +13,7 @@ import (
 	"github.com/quorumcontrol/chaintree/graftabledag"
 	"github.com/quorumcontrol/tupelo-lite/aggregator"
 	"github.com/quorumcontrol/tupelo-lite/aggregator/api"
+	"github.com/quorumcontrol/tupelo-lite/aggregator/api/publisher"
 	"github.com/quorumcontrol/tupelo-lite/aggregator/identity"
 )
 
@@ -56,21 +57,27 @@ func IdentityMiddleware(next http.Handler, getter graftabledag.DagGetter) http.H
 	})
 }
 
-func main() {
+// TODO: return errors
+func Setup() *api.Resolver {
 	logging.SetLogLevel("*", "info")
-
+	logging.SetLogLevel("server", "debug")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	cli, err := StartMQTT()
+	if err != nil {
+		panic(err)
+	}
+
 	// TODO: publish this to an mqtt broker
-	updateChan := make(aggregator.UpdateChan, 10)
-	go func() {
-		for {
-			// up := <-updateChan
-			// logger.Debugf("updated: %v", up)
-			<-updateChan
-		}
-	}()
+	updateChan, err := publisher.StartPublishing(ctx, func(ctx context.Context, topic string, payload []byte) error {
+		logger.Debugf("updated: %s", topic)
+		cli.Publish(topic, byte(0), false, payload)
+		return nil
+	})
+	if err != nil {
+		panic(err)
+	}
 
 	r, err := api.NewResolver(ctx, &api.Config{KeyValueStore: aggregator.NewMemoryStore(), UpdateChannel: updateChan})
 	if err != nil {
@@ -87,6 +94,11 @@ func main() {
 
 	http.Handle("/graphql", CorsMiddleware(IdentityMiddleware(&relay.Handler{Schema: schema}, r.Aggregator)))
 
+	return r
+}
+
+func main() {
+	Setup()
 	fmt.Println("running on port 9011 path: /graphql")
 	log.Fatal(http.ListenAndServe(":9011", nil))
 }
