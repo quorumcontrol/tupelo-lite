@@ -6,6 +6,8 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	cbornode "github.com/ipfs/go-ipld-cbor"
+	"github.com/quorumcontrol/tupelo-lite/aggregator/api/publisher"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/testhelpers"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +28,7 @@ func TestPublishesToMqtt(t *testing.T) {
 	require.True(t, didConnect)
 
 	// TODO: type this chan
-	resp := make(chan interface{})
+	resp := make(chan mqtt.Message)
 	subTok := cli.Subscribe("public/trees/#", byte(0), func(cli mqtt.Client, msg mqtt.Message) {
 		resp <- msg
 	})
@@ -36,10 +38,15 @@ func TestPublishesToMqtt(t *testing.T) {
 	// now send an ABR to the aggregator
 	// and get the subscription!
 	abr := testhelpers.NewValidTransaction(t)
+
 	_, err := agg.Add(ctx, &abr)
 	require.Nil(t, err)
 
 	// and we should get a message
-	<-resp
+	updateMsg := <-resp
 
+	update := &publisher.AddBlockMessage{}
+	err = cbornode.DecodeInto(updateMsg.Payload(), update)
+	require.Nil(t, err)
+	require.Equal(t, update.AddBlockRequest.ObjectId, abr.ObjectId)
 }

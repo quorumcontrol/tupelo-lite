@@ -6,10 +6,10 @@ import (
 
 	logging "github.com/ipfs/go-log"
 
-	"github.com/ipfs/go-cid"
 	cbornode "github.com/ipfs/go-ipld-cbor"
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/quorumcontrol/chaintree/safewrap"
+	"github.com/quorumcontrol/messages/v2/build/go/services"
 	"github.com/quorumcontrol/tupelo-lite/aggregator"
 )
 
@@ -21,10 +21,8 @@ func init() {
 
 // AddBlockMessage is sent to the message queue for every update
 type AddBlockMessage struct {
-	Did       string
-	NewTip    cid.Cid
-	NewBlocks [][]byte
-	State     [][]byte
+	AddBlockRequest *services.AddBlockRequest
+	NewBlocks       [][]byte
 }
 
 func blocksToBytes(blocks []format.Node) [][]byte {
@@ -51,19 +49,16 @@ func StartPublishing(ctx context.Context, publishFunc MessageQueueFunc) (aggrega
 			sw := &safewrap.SafeWrap{}
 			wrapper := <-updateCh
 
-			newTip, err := cid.Cast(wrapper.NewTip)
-			if err != nil {
-				logger.Errorf("error getting CID: %v", err)
-				continue
-			}
 			addBlockMessage := &AddBlockMessage{
-				Did:       string(wrapper.ObjectId),
-				NewTip:    newTip,
-				NewBlocks: blocksToBytes(wrapper.NewNodes),
-				State:     wrapper.State,
+				AddBlockRequest: wrapper.AddBlockRequest,
+				NewBlocks:       blocksToBytes(wrapper.NewNodes),
 			}
 			wrapped := sw.WrapObject(addBlockMessage)
-			err = publishFunc(ctx, fmt.Sprintf("public/trees/%s", addBlockMessage.Did), wrapped.RawData())
+			if sw.Err != nil {
+				logger.Errorf("error wrapping: %v", sw.Err)
+				continue
+			}
+			err := publishFunc(ctx, fmt.Sprintf("public/trees/%s", string(wrapper.ObjectId)), wrapped.RawData())
 			if err != nil {
 				logger.Errorf("error publishing: %v", err)
 				continue
