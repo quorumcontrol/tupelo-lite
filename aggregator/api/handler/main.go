@@ -40,6 +40,7 @@ var (
 	mainSchema  *graphql.Schema
 	appResolver *api.Resolver
 
+	awsSession  *session.Session
 	identityCli *cognitoidentity.CognitoIdentity
 	iotCli      *iot.IoT
 	iotDataCli  *iotdataplane.IoTDataPlane
@@ -185,16 +186,18 @@ func init() {
 	log.Println("init")
 	ctx := context.Background()
 
-	mySession := session.Must(session.NewSession())
-	identityCli = cognitoidentity.New(mySession)
-	iotCli = iot.New(mySession)
-	iotDataCli = iotdataplane.New(mySession)
+	awsSession = session.Must(session.NewSession())
+	identityCli = cognitoidentity.New(awsSession)
+	iotCli = iot.New(awsSession)
 
-	updateCh, err := publisher.StartPublishing(ctx, func(ctx context.Context, topic string, msg string) error {
+	updateFunc, err := publisher.Wrap(ctx, func(ctx context.Context, topic string, msg string) error {
+		logger.Infof("publishing to %s", topic)
 		_, err := iotDataCli.Publish(&iotdataplane.PublishInput{
 			Topic:   aws.String(topic),
 			Payload: []byte(msg),
+			Qos:     aws.Int64(1),
 		})
+		logger.Infof("published to %s", topic)
 		if err != nil {
 			logger.Errorf("error publishing", err)
 			return err
@@ -202,7 +205,7 @@ func init() {
 		return nil
 	})
 
-	resolver, err := api.NewResolver(ctx, &api.Config{KeyValueStore: getDatastore(), UpdateChannel: updateCh})
+	resolver, err := api.NewResolver(ctx, &api.Config{KeyValueStore: getDatastore(), UpdateFunc: updateFunc})
 	if err != nil {
 		panic(err)
 	}
@@ -218,6 +221,19 @@ func init() {
 }
 
 func main() {
+	ctx := context.Background()
+
+	if iotDataCli == nil {
+		endpointResp, err := iotCli.DescribeEndpointWithContext(ctx, &iot.DescribeEndpointInput{})
+		if err != nil {
+			panic(fmt.Errorf("error getting endpoint: %v", err))
+		}
+
+		iotDataCli = iotdataplane.New(awsSession, &aws.Config{
+			Endpoint: endpointResp.EndpointAddress,
+		})
+	}
+
 	log.Println("starting handler")
 	logging.SetLogLevel("*", "info")
 	lambda.Start(Handler)

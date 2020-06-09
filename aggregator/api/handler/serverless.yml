@@ -44,6 +44,7 @@ provider:
       Resource: "*"
       Action:
         - iot:AttachPolicy
+        - iot:DescribeEndpoint
     - Effect: Allow
       Action:
         - dynamodb:DescribeTable

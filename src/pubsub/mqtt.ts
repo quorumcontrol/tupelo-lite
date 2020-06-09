@@ -1,7 +1,10 @@
-import Amplify, { PubSub, Auth } from 'aws-amplify';
+import Amplify, { Auth } from 'aws-amplify';
 import { AWSIoTProvider, MqttOverWSProvider } from '@aws-amplify/pubsub/lib/Providers';
 import WebSocket from 'ws';
 import { IClientIdentityToken } from '../client';
+import debug from 'debug';
+
+const log = debug("pubsub")
 
 declare const global: any;
 global.WebSocket = WebSocket;
@@ -49,6 +52,7 @@ export async function configurePubSubForAWS(opts: AWSOptions) {
 
 
 export async function authenticatePubsub(did: string, token: IClientIdentityToken) {
+    log("authenticating pubsub")
     await Auth.federatedSignIn(
         "developer",
         {

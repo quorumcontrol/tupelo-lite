@@ -8,6 +8,7 @@ import (
 	"github.com/quorumcontrol/messages/v2/build/go/services"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/testhelpers"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/types"
+	"github.com/quorumcontrol/tupelo/signer/gossip"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,12 +28,14 @@ func TestPublishingNewAbrs(t *testing.T) {
 
 	ng := types.NewNotaryGroup("testnotary")
 
-	updateChan := make(UpdateChan, 1)
+	updateChan := make(chan *gossip.AddBlockWrapper, 1)
 
 	agg, err := NewAggregator(ctx, &AggregatorConfig{
 		KeyValueStore: NewMemoryStore(),
 		Group:         ng,
-		UpdateChannel: updateChan,
+		UpdateFunc: func(wrap *gossip.AddBlockWrapper) {
+			updateChan <- wrap
+		},
 	})
 	require.Nil(t, err)
 

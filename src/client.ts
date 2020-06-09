@@ -140,7 +140,7 @@ export class Client {
         }
     }
 
-    identify(did: string, key: EcdsaKey) {
+    identify(did: string, key: EcdsaKey): Promise<any> {
         const now = new Date()
         this.identity = {
             iss: did,
@@ -153,14 +153,16 @@ export class Client {
         // pubsub at all
         // if we have an AWS config for pubsub then go ahead and start the auth process
         if (this.config.pubSub?.type === "AWS") {
-            this.loginToAWS()
+            return this.loginToAWS()
         }
+        return Promise.resolve()
     }
 
     private async loginToAWS(): Promise<void> {
+        log("loginToAws")
         const token = await this.identityToken()
-        authenticatePubsub(this.identity?.sub!, token)
-        return
+        log("authenticating pubsub with ", this.identity?.sub, token.id)
+        return authenticatePubsub(this.identity?.sub!, token)
     }
 
     private async signedIdentity(): Promise<undefined | IdentityWithSignature> {
@@ -203,7 +205,7 @@ export class Client {
             throw new Error("client must support pubsub")
         }
 
-        log("subscribing : ", opts.topic)
+        log(`subscribing: '${opts.topic}'`)
         return PubSub.subscribe(opts.topic).subscribe({
             next: opts.next,
             error: opts.error,

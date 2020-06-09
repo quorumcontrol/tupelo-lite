@@ -4,7 +4,7 @@ import './mqtt'; // for the side effect of configuring Amplify
 import { PubSub, Auth } from 'aws-amplify';
 import {Repo} from '../repo';
 import {Community} from '../community/community';
-import { authenticatePubsub } from './mqtt';
+import { authenticatePubsub, configurePubSubForAWS, defaultAwsConfig } from './mqtt';
 import { setDataTransaction, ChainTree } from '../chaintree';
 import { EcdsaKey } from '../ecdsa';
 
@@ -26,9 +26,16 @@ describe.skip("AWS MQTT", ()=> {
 
         const token = await community.client.identityToken()
         expect(token.result).to.be.true
+        await configurePubSubForAWS(defaultAwsConfig)
         await authenticatePubsub(did!, token)
         
         return new Promise(async (resolve,reject) => {
+
+            // PubSub.subscribe('public/trees/did:test:test').subscribe({
+            //     next: data => { console.log('Message received', data); resolve() },
+            //     error: error => console.error("sub (trees) error: ", error),
+            //     complete: () => console.log('Done'),
+            // });
 
             PubSub.subscribe('public/userToUser/test').subscribe({
                 next: data => { console.log('Message received', data); resolve() },

@@ -1,13 +1,17 @@
 import 'mocha'
 import {expect} from 'chai'
 import Repo from '../repo/repo'
-import {generateCascadinNodes} from '../chaintree/dag/dag.spec'
 import { Dag } from '../chaintree/dag/dag';
 import { localURL, Community } from './community';
 import {PolicyTree} from './policytree'
 import { Client } from '../client';
 import { EcdsaKey } from '../ecdsa';
 import { setDataTransaction } from '../chaintree';
+import {defaultAwsConfig} from '../pubsub/mqtt'
+import debug from 'debug';
+
+const log = debug("policytree.spec")
+const remoteUrl = "https://a7s7o22i6d.execute-api.us-east-1.amazonaws.com/demo/graphql"
 
 describe("PolicyTree", ()=> {
 
@@ -24,25 +28,32 @@ describe("PolicyTree", ()=> {
             throw new Error("error getting id")
         }
         await community.playTransactions(tree, [setDataTransaction("/hi", "hihi")])
+        await community2.identify(id, tree.key!)
+
         const respTip = await community.getTip(id)
         expect(respTip.toString()).to.equal(tree.tip.toString())
 
         const tree2 = await community2.getLatest(id)
-        const sub = await tree2.subscribe()
+        log("subscribe on tree2 called")
 
-        await community.playTransactions(tree, [setDataTransaction("/hi", "updated")])
-
-        return new Promise((resolve,reject)=> {
+        return new Promise(async (resolve,reject)=> {
+            const sub = await tree2.subscribe()
+            log("subscribing to update")
             tree2.events.on('update', async ()=> {
-                 // test that tree2 got the updated trasaction through the subscription
-                 try {
-                    expect((await tree2.resolveData("hi")).value).to.equal("updated")
-                  } catch(e) {
-                      reject(e)
-                  }
-                  sub.unsubscribe()
-                  resolve()
-            })
+                // test that tree2 got the updated trasaction through the subscription
+                try {
+                   expect((await tree2.resolveData("hi")).value).to.equal("updated")
+                 } catch(e) {
+                     reject(e)
+                 }
+                 sub.unsubscribe()
+                 resolve()
+           })
+            setTimeout(async ()=> {
+               log("play transactions")
+               await community.playTransactions(tree, [setDataTransaction("/hi", "updated")])
+            }, 1000)
+           
         })
       
     })
@@ -78,6 +89,7 @@ describe("PolicyTree", ()=> {
             client: c,
             store: service,
             tip: resp.touchedBlocks![0],
+            did: await tree.id(),
         })
 
         const resolveResp = await tree2.resolveData("hi")

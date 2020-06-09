@@ -8,6 +8,7 @@ const log = debug("policytree")
 
 export interface IPolicyTreeInitializer extends IChainTreeInitializer {
     client: Client
+    did:string
 }
 
 /**
@@ -17,11 +18,22 @@ export class PolicyTree extends ChainTree {
 
     client: Client
     events: EventEmitter
+    did: string
 
     constructor(opts: IPolicyTreeInitializer) {
         super(opts)
         this.client = opts.client
         this.events = new EventEmitter()
+        this.did = opts.did
+    }
+
+    async id():Promise<string> {
+        if (this.did) {
+            return Promise.resolve(this.did)
+        }
+        const resp = await super.id()
+        this.did = resp!
+        return this.did
     }
 
     async subscribe(): Promise<Subscription> {

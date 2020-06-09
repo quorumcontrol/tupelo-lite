@@ -32,11 +32,12 @@ export class Community {
             client: this.client,
             tip: tree.tip,
             key: tree.key,
+            did: key.toDid(),
         })
     }
 
     identify(did:string,key:EcdsaKey) {
-        this.client.identify(did, key)
+        return this.client.identify(did, key)
     }
 
     async createRandom() {
@@ -103,6 +104,7 @@ export class Community {
                 client: this.client,
                 tip: tip,
                 store: this.blockservice,
+                did: did,
             })
         } catch(err) {
             throw err

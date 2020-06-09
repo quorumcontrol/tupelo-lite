@@ -32,10 +32,14 @@ var CacheSize = 100
 // assert fulfills the interface at compile time
 var _ graftabledag.DagGetter = (*Aggregator)(nil)
 
-// UpdateChan is a stream of updates from the aggregator,
-// passed in from the config (optinally) it's used to
-// send updates to other parts of the system (for instance, publishing on a message queue)
-type UpdateChan chan *gossip.AddBlockWrapper
+// // UpdateChan is a stream of updates from the aggregator,
+// // passed in from the config (optinally) it's used to
+// // send updates to other parts of the system (for instance, publishing on a message queue)
+// type UpdateChan chan *gossip.AddBlockWrapper
+
+// implemented as a callback to make lambda operation sync and easy
+// implement your own channel sender if you'd prefer async
+type UpdateFunc func(*gossip.AddBlockWrapper)
 
 type AddResponse struct {
 	IsValid  bool
@@ -50,14 +54,14 @@ type Aggregator struct {
 	validator     *gossip.TransactionValidator
 	keyValueStore datastore.Batching
 	group         *types.NotaryGroup
-	updateChan    UpdateChan
+	updateFunc    UpdateFunc
 }
 
 // AggregatorConfig is used to configure a new Aggregator
 type AggregatorConfig struct {
 	KeyValueStore datastore.Batching
 	Group         *types.NotaryGroup
-	UpdateChannel UpdateChan
+	UpdateFunc    UpdateFunc
 }
 
 func NewAggregator(ctx context.Context, config *AggregatorConfig) (*Aggregator, error) {
@@ -74,7 +78,7 @@ func NewAggregator(ctx context.Context, config *AggregatorConfig) (*Aggregator, 
 		DagStore:      dagStore,
 		validator:     validator,
 		group:         config.Group,
-		updateChan:    config.UpdateChannel,
+		updateFunc:    config.UpdateFunc,
 	}, nil
 }
 
@@ -153,8 +157,8 @@ func (a *Aggregator) Add(ctx context.Context, abr *services.AddBlockRequest) (*A
 		return nil, fmt.Errorf("error putting key: %w", err)
 	}
 
-	if a.updateChan != nil {
-		a.updateChan <- wrapper
+	if a.updateFunc != nil {
+		a.updateFunc(wrapper)
 	}
 
 	return &AddResponse{

@@ -34,7 +34,7 @@ type Resolver struct {
 
 type Config struct {
 	KeyValueStore datastore.Batching
-	UpdateChannel aggregator.UpdateChan
+	UpdateFunc    aggregator.UpdateFunc
 }
 
 func NewResolver(ctx context.Context, config *Config) (*Resolver, error) {
@@ -43,7 +43,7 @@ func NewResolver(ctx context.Context, config *Config) (*Resolver, error) {
 	defaultConfig.ID = "aggregator"
 	ng := types.NewNotaryGroupFromConfig(defaultConfig)
 
-	agg, err := aggregator.NewAggregator(ctx, &aggregator.AggregatorConfig{KeyValueStore: config.KeyValueStore, Group: ng, UpdateChannel: config.UpdateChannel})
+	agg, err := aggregator.NewAggregator(ctx, &aggregator.AggregatorConfig{KeyValueStore: config.KeyValueStore, Group: ng, UpdateFunc: config.UpdateFunc})
 	if err != nil {
 		return nil, fmt.Errorf("error creating aggregator: %w", err)
 	}

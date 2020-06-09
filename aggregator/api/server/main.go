@@ -70,7 +70,7 @@ func Setup() *api.Resolver {
 	}
 
 	// TODO: publish this to an mqtt broker
-	updateChan, err := publisher.StartPublishing(ctx, func(ctx context.Context, topic string, msg string) error {
+	updateFunc, err := publisher.Wrap(ctx, func(ctx context.Context, topic string, msg string) error {
 		logger.Debugf("updated: %s", topic)
 		tok := cli.Publish(topic, byte(0), false, msg)
 		go func() {
@@ -86,7 +86,7 @@ func Setup() *api.Resolver {
 		panic(err)
 	}
 
-	r, err := api.NewResolver(ctx, &api.Config{KeyValueStore: aggregator.NewMemoryStore(), UpdateChannel: updateChan})
+	r, err := api.NewResolver(ctx, &api.Config{KeyValueStore: aggregator.NewMemoryStore(), UpdateFunc: updateFunc})
 	if err != nil {
 		panic(err)
 	}
