@@ -8,4 +8,4 @@ temp/
 builddocker/.gopath
 browser*
 .serverless
-aggregator/api/handler/bin/
+aggregator/api/handler/bin/*

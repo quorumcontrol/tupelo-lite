@@ -20,7 +20,7 @@ interface ICascadedResponse {
   cids: CID[]
 }
 
-function generateCascadinNodes(count:number):Promise<ICascadedResponse> {
+export function generateCascadinNodes(count:number):Promise<ICascadedResponse> {
   return new Promise<ICascadedResponse>(async (resolve)=> {
     let objs:ICascadedNode[] = [{
       someData: `I am 0`

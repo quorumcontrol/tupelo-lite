@@ -10,9 +10,14 @@ import (
 
 	"github.com/graph-gophers/graphql-go"
 	"github.com/graph-gophers/graphql-go/relay"
+	"github.com/quorumcontrol/chaintree/graftabledag"
 	"github.com/quorumcontrol/tupelo-lite/aggregator"
 	"github.com/quorumcontrol/tupelo-lite/aggregator/api"
+	"github.com/quorumcontrol/tupelo-lite/aggregator/api/publisher"
+	"github.com/quorumcontrol/tupelo-lite/aggregator/identity"
 )
+
+var logger = logging.Logger("server")
 
 func CorsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -27,13 +32,61 @@ func CorsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func main() {
-	logging.SetLogLevel("aggregator", "debug")
-	logging.SetLogLevel("resolvers", "debug")
+func IdentityMiddleware(next http.Handler, getter graftabledag.DagGetter) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id, err := identity.FromHeader(r.Header)
+		if err != nil {
+			w.WriteHeader(500)
+			return
+		}
+		if id != nil {
+			isVerified, err := id.Verify(context.TODO(), getter)
+			if err != nil {
+				logger.Errorf("error verifying: %v", err)
+				w.WriteHeader(500)
+				return
+			}
+			if isVerified {
+				logger.Debugf("id: %v", id)
+				newR := r.WithContext(context.WithValue(r.Context(), api.IdentityContextKey, id.Identity))
+				next.ServeHTTP(w, newR)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// TODO: return errors
+func Setup() *api.Resolver {
+	logging.SetLogLevel("*", "info")
+	logging.SetLogLevel("server", "debug")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	r, err := api.NewResolver(ctx, aggregator.NewMemoryStore())
+	cli, err := StartMQTT()
+	if err != nil {
+		panic(err)
+	}
+
+	// TODO: publish this to an mqtt broker
+	updateFunc, err := publisher.Wrap(ctx, func(ctx context.Context, topic string, msg string) error {
+		logger.Debugf("updated: %s", topic)
+		tok := cli.Publish(topic, byte(0), false, msg)
+		go func() {
+			tok.Wait()
+			logger.Debugf("published")
+			err := tok.Error()
+			logger.Errorf("error publishing: %v", err)
+		}()
+
+		return nil
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	r, err := api.NewResolver(ctx, &api.Config{KeyValueStore: aggregator.NewMemoryStore(), UpdateFunc: updateFunc})
 	if err != nil {
 		panic(err)
 	}
@@ -41,13 +94,18 @@ func main() {
 	opts := []graphql.SchemaOpt{graphql.UseFieldResolvers(), graphql.MaxParallelism(20)}
 	schema := graphql.MustParseSchema(api.Schema, r, opts...)
 
-	http.Handle("/", CorsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	http.Handle("/", CorsMiddleware(IdentityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("rendering igraphql")
 		w.Write(page)
-	})))
+	}), r.Aggregator)))
 
-	http.Handle("/graphql", CorsMiddleware(&relay.Handler{Schema: schema}))
+	http.Handle("/graphql", CorsMiddleware(IdentityMiddleware(&relay.Handler{Schema: schema}, r.Aggregator)))
 
+	return r
+}
+
+func main() {
+	Setup()
 	fmt.Println("running on port 9011 path: /graphql")
 	log.Fatal(http.ListenAndServe(":9011", nil))
 }

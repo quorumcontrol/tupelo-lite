@@ -20,8 +20,10 @@ type ResolvePayload {
 	touchedBlocks: [Block!]
 }
 
-type BlocksPayload {
-	blocks: [Block!]!
+type IdentityTokenPayload {
+	result: Boolean!
+	token: String!
+	id: String!
 }
 
 input ResolveInput {
@@ -33,17 +35,12 @@ input AddBlockInput {
   addBlockRequest: String! # The serialized protobuf as base64
 }
 
-input BlocksInput {
-	ids: [String!]!
-}
-
 type Query {
   resolve(input:ResolveInput!):ResolvePayload
-  blocks(input: BlocksInput!):BlocksPayload!
+  identityToken:IdentityTokenPayload
 }
 
 type Mutation {
-  # This mutation takes id and email parameters and responds with a User
   addBlock(input:AddBlockInput!):AddBlockPayload
 }
 `

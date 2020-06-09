@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"log"
 	"strings"
 
 	logging "github.com/ipfs/go-log"
@@ -16,19 +15,35 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/quorumcontrol/messages/v2/build/go/services"
 	"github.com/quorumcontrol/tupelo-lite/aggregator"
+	"github.com/quorumcontrol/tupelo-lite/aggregator/identity"
+	"github.com/quorumcontrol/tupelo-lite/aggregator/policy"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/types"
 	"github.com/quorumcontrol/tupelo/sdk/reftracking"
 )
 
+const IdentityContextKey = "tupelo-lite:identity"
+
 var logger = logging.Logger("resolver")
 
+type TokenHandlerFunc func(ctx context.Context) (*IdentityTokenPayload, error)
+
 type Resolver struct {
-	Aggregator *aggregator.Aggregator
+	Aggregator   *aggregator.Aggregator
+	TokenHandler TokenHandlerFunc
 }
 
-func NewResolver(ctx context.Context, ds datastore.Batching) (*Resolver, error) {
-	ng := types.NewNotaryGroup("aggregator")
-	agg, err := aggregator.NewAggregator(ctx, ds, ng)
+type Config struct {
+	KeyValueStore datastore.Batching
+	UpdateFunc    aggregator.UpdateFunc
+}
+
+func NewResolver(ctx context.Context, config *Config) (*Resolver, error) {
+	defaultConfig := types.DefaultConfig()
+	defaultConfig.ValidatorGenerators = append(defaultConfig.ValidatorGenerators, policy.ValidatorGenerator)
+	defaultConfig.ID = "aggregator"
+	ng := types.NewNotaryGroupFromConfig(defaultConfig)
+
+	agg, err := aggregator.NewAggregator(ctx, &aggregator.AggregatorConfig{KeyValueStore: config.KeyValueStore, Group: ng, UpdateFunc: config.UpdateFunc})
 	if err != nil {
 		return nil, fmt.Errorf("error creating aggregator: %w", err)
 	}
@@ -51,6 +66,12 @@ type ResolvePayload struct {
 	TouchedBlocks *[]Block
 }
 
+type IdentityTokenPayload struct {
+	Result bool
+	Token  string
+	Id     string
+}
+
 type AddBlockInput struct {
 	Input struct {
 		AddBlockRequest string //base64
@@ -68,42 +89,22 @@ type AddBlockPayload struct {
 	NewBlocks *[]Block
 }
 
-type BlocksPayload struct {
-	Blocks []Block
-}
-
-type BlocksInput struct {
-	Input struct {
-		Ids []string
+func RequesterFromCtx(ctx context.Context) *identity.Identity {
+	var requester *identity.Identity
+	switch identityInter := ctx.Value(IdentityContextKey).(type) {
+	case identity.Identity:
+		requester = &identityInter
+	default:
+		requester = nil
 	}
-}
-
-func (r *Resolver) Blocks(ctx context.Context, args BlocksInput) (*BlocksPayload, error) {
-	stringIds := args.Input.Ids
-	ids := make([]cid.Cid, len(stringIds))
-	for i, stringId := range stringIds {
-		id, err := cid.Decode(stringId)
-		if err != nil {
-			return nil, fmt.Errorf("error getting CID: %w", err)
-		}
-		ids[i] = id
-	}
-	blockCh := r.Aggregator.GetMany(ctx, ids)
-	blocks := make([]format.Node, len(stringIds))
-	i := 0
-	for nodeOption := range blockCh {
-		if nodeOption.Err != nil {
-			return nil, fmt.Errorf("error fetching: %w", nodeOption.Err)
-		}
-		blocks[i] = nodeOption.Node
-		i++
-	}
-	return &BlocksPayload{Blocks: blocksToGraphQLBlocks(blocks)}, nil
+	return requester
 }
 
 func (r *Resolver) Resolve(ctx context.Context, input ResolveInput) (*ResolvePayload, error) {
-	logger.Infof("resolving %s %s", input.Input.Did, input.Input.Path)
+	requester := RequesterFromCtx(ctx)
+	logger.Infof("resolving %s %s with requester %v", input.Input.Did, input.Input.Path, requester)
 	path := strings.Split(strings.TrimPrefix(input.Input.Path, "/"), "/")
+
 	latest, err := r.Aggregator.GetLatest(ctx, input.Input.Did)
 	if err == aggregator.ErrNotFound {
 		logger.Debugf("resolve %s not found", input.Input.Did)
@@ -114,6 +115,19 @@ func (r *Resolver) Resolve(ctx context.Context, input ResolveInput) (*ResolvePay
 	if err != nil {
 		logger.Errorf("error getting latest %s %v", input.Input.Did, err)
 		return nil, fmt.Errorf("error getting latest: %w", err)
+	}
+
+	valid, err := policy.ReadValidator(ctx, latest.Dag, strings.Join(path, "/"), requester)
+	if err != nil {
+		return nil, fmt.Errorf("error validating: %w", err)
+	}
+	logger.Debugf("readValidator: %v", valid)
+	if !valid {
+		// if not valid then just return as if it was not found
+
+		return &ResolvePayload{
+			RemainingPath: path,
+		}, nil
 	}
 
 	trackedTree, tracker, err := reftracking.WrapTree(ctx, latest)
@@ -156,6 +170,13 @@ func blocksToGraphQLBlocks(nodes []format.Node) []Block {
 	return retBlocks
 }
 
+func (r *Resolver) IdentityToken(ctx context.Context) (*IdentityTokenPayload, error) {
+	if r.TokenHandler == nil {
+		return nil, fmt.Errorf("undefined token handler")
+	}
+	return r.TokenHandler(ctx)
+}
+
 func (r *Resolver) AddBlock(ctx context.Context, input AddBlockInput) (*AddBlockPayload, error) {
 	abrBits, err := base64.StdEncoding.DecodeString(input.Input.AddBlockRequest)
 	if err != nil {
@@ -167,7 +188,7 @@ func (r *Resolver) AddBlock(ctx context.Context, input AddBlockInput) (*AddBlock
 		return nil, fmt.Errorf("error unmarshaling %w", err)
 	}
 
-	log.Printf("addBlock %s", abr.ObjectId)
+	logger.Infof("addBlock %s", abr.ObjectId)
 
 	resp, err := r.Aggregator.Add(ctx, abr)
 	if err == aggregator.ErrInvalidBlock {

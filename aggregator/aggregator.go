@@ -32,6 +32,15 @@ var CacheSize = 100
 // assert fulfills the interface at compile time
 var _ graftabledag.DagGetter = (*Aggregator)(nil)
 
+// // UpdateChan is a stream of updates from the aggregator,
+// // passed in from the config (optinally) it's used to
+// // send updates to other parts of the system (for instance, publishing on a message queue)
+// type UpdateChan chan *gossip.AddBlockWrapper
+
+// implemented as a callback to make lambda operation sync and easy
+// implement your own channel sender if you'd prefer async
+type UpdateFunc func(*gossip.AddBlockWrapper)
+
 type AddResponse struct {
 	IsValid  bool
 	NewTip   cid.Cid
@@ -45,22 +54,31 @@ type Aggregator struct {
 	validator     *gossip.TransactionValidator
 	keyValueStore datastore.Batching
 	group         *types.NotaryGroup
+	updateFunc    UpdateFunc
 }
 
-func NewAggregator(ctx context.Context, keyValueStore datastore.Batching, group *types.NotaryGroup) (*Aggregator, error) {
-	validator, err := gossip.NewTransactionValidator(ctx, logger, group, nil) // nil is the actor pid
+// AggregatorConfig is used to configure a new Aggregator
+type AggregatorConfig struct {
+	KeyValueStore datastore.Batching
+	Group         *types.NotaryGroup
+	UpdateFunc    UpdateFunc
+}
+
+func NewAggregator(ctx context.Context, config *AggregatorConfig) (*Aggregator, error) {
+	validator, err := gossip.NewTransactionValidator(ctx, logger, config.Group, nil) // nil is the actor pid
 	if err != nil {
 		return nil, err
 	}
-	dagStore, err := nodestore.FromDatastoreOfflineCached(ctx, keyValueStore, CacheSize)
+	dagStore, err := nodestore.FromDatastoreOfflineCached(ctx, config.KeyValueStore, CacheSize)
 	if err != nil {
 		return nil, err
 	}
 	return &Aggregator{
-		keyValueStore: keyValueStore,
+		keyValueStore: config.KeyValueStore,
 		DagStore:      dagStore,
 		validator:     validator,
-		group:         group,
+		group:         config.Group,
+		updateFunc:    config.UpdateFunc,
 	}, nil
 }
 
@@ -100,6 +118,7 @@ func (a *Aggregator) GetLatest(ctx context.Context, objectID string) (*chaintree
 	if err != nil {
 		return nil, fmt.Errorf("error creating tree: %w", err)
 	}
+
 	return tree, nil
 }
 
@@ -137,6 +156,11 @@ func (a *Aggregator) Add(ctx context.Context, abr *services.AddBlockRequest) (*A
 	if err != nil {
 		return nil, fmt.Errorf("error putting key: %w", err)
 	}
+
+	if a.updateFunc != nil {
+		a.updateFunc(wrapper)
+	}
+
 	return &AddResponse{
 		NewTip:   newTip,
 		IsValid:  isValid,

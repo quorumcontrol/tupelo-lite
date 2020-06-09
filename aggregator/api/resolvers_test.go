@@ -4,68 +4,22 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/graph-gophers/graphql-go/gqltesting"
-	format "github.com/ipfs/go-ipld-format"
-	"github.com/quorumcontrol/chaintree/nodestore"
-	"github.com/quorumcontrol/chaintree/safewrap"
 	"github.com/quorumcontrol/tupelo-lite/aggregator"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/testhelpers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetBlocks(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	memStore := aggregator.NewMemoryStore()
-	dagStore, err := nodestore.FromDatastoreOffline(ctx, memStore)
-	require.Nil(t, err)
-
-	r, err := NewResolver(ctx, memStore)
-	require.Nil(t, err)
-
-	opts := []graphql.SchemaOpt{graphql.UseFieldResolvers()}
-	schema, err := graphql.ParseSchema(Schema, r, opts...)
-	require.Nil(t, err)
-
-	sw := &safewrap.SafeWrap{}
-	b1 := sw.WrapObject("block1")
-	b2 := sw.WrapObject("block2")
-	dagStore.AddMany(ctx, []format.Node{b1, b2})
-
-	gqltesting.RunTests(t, []*gqltesting.Test{
-		{
-			Schema: schema,
-			Query: fmt.Sprintf(`
-			query {
-				blocks(input:{ids:["%s","%s"]}) {
-				  blocks {
-					cid
-				  }
-				}
-			  }
-			`, b1.Cid().String(), b2.Cid().String()),
-			ExpectedResult: fmt.Sprintf(`
-				{
-					"blocks":{"blocks":[{"cid": "%s"},{"cid":"%s"}]}
-				}
-			`, b1.Cid().String(), b2.Cid().String()),
-		},
-	})
-
-}
-
 func TestTouchedNodes(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	r, err := NewResolver(ctx, aggregator.NewMemoryStore())
+	r, err := NewResolver(ctx, &Config{KeyValueStore: aggregator.NewMemoryStore()})
 	require.Nil(t, err)
 
 	opts := []graphql.SchemaOpt{graphql.UseFieldResolvers()}
@@ -115,7 +69,7 @@ func TestSanity(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	r, err := NewResolver(ctx, aggregator.NewMemoryStore())
+	r, err := NewResolver(ctx, &Config{KeyValueStore: aggregator.NewMemoryStore()})
 	require.Nil(t, err)
 
 	opts := []graphql.SchemaOpt{graphql.UseFieldResolvers()}

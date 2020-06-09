@@ -1,7 +1,6 @@
 import 'mocha'
 import { expect } from 'chai'
 import { Client, updateChainTreeWithResponse, graphQLtoBlocks } from './client'
-import {BlockService} from './community'
 import { ChainTree, setDataTransaction, CID, setOwnershipTransaction } from './chaintree'
 import Repo from './repo/repo'
 import { EcdsaKey } from './ecdsa'
@@ -36,7 +35,118 @@ describe("Client", () => {
         repo.close()
     })
 
-    it('supports multiple transactions', async ()=> {
+    it('can use write policies', async ()=> {
+        const policies = {
+            "tupelo.nopolicychange": `
+                package tupelo.nopolicychange
+
+                default allow = false
+
+                modifies_policy {
+                    contains(input.transactions[_].setDataPayload.path, ".well-known/policies")
+                }
+
+                allow {
+                    not modifies_policy
+                }
+            `,
+            main: `
+                package main
+			    default allow = false
+
+			    allow {
+			    	data.tupelo.nopolicychange.allow
+			    }
+            `
+        }
+
+        let cli = new Client("http://localhost:9011/graphql")
+
+        const repo = await Repo.memoryRepo("write-policies")
+
+        const tree = await ChainTree.createRandom(new IpfsBlockService(repo.repo))
+        const abr = await tree.newAddBlockRequest([setDataTransaction(".well-known/policies", policies)])
+
+        const resp = await cli.addBlock(abr)
+        expect(resp.errors).to.be.undefined
+        expect(resp.valid).to.be.true
+        await updateChainTreeWithResponse(tree, resp)
+
+        // so now we should not be able to set change the policy
+        const abr2 = await tree.newAddBlockRequest([setDataTransaction(".well-known/policies", null)])
+
+        const resp2 = await cli.addBlock(abr2)
+        expect(resp2.errors).to.be.undefined
+        expect(resp2.valid).to.be.false
+        
+        repo.close()
+    })
+
+    it('identifies without a policy', async () => {
+        let cli = new Client("http://localhost:9011/graphql")
+
+        const repo = await Repo.memoryRepo("identifies")
+
+        const tree = await ChainTree.createRandom(new IpfsBlockService(repo.repo))
+        const abr = await tree.newAddBlockRequest([setDataTransaction("hi", "hi")])
+        const resp = await cli.addBlock(abr)
+        expect(resp.errors).to.be.undefined
+        const did = (await tree.id())
+        cli.identify(did!, tree.key!)
+        const resolveResp = await cli.resolve(did!, "/tree/data/hi")
+        expect(resolveResp.value).to.equal("hi")
+
+        repo.close()
+    })
+
+    it('identifies with support for policies', async () => {
+        let cli = new Client("http://localhost:9011/graphql")
+
+        const repo = await Repo.memoryRepo("identifies-with-policy")
+
+        const tree = await ChainTree.createRandom(new IpfsBlockService(repo.repo))
+        const did = await tree.id()
+
+        const abr = await tree.newAddBlockRequest([
+            setDataTransaction(".well-known/policies", {
+                read: `
+                    package read
+			        default allow = false
+
+			        allow {
+			        	not input.path == "tree/data/locked"
+                    }
+
+                    allow {
+                        input.identity.sub == "${did}"
+                    }
+                `
+            }),
+            setDataTransaction("locked", "worked")
+        ])
+
+        const resp = await cli.addBlock(abr)
+        expect(resp.errors).to.be.undefined
+
+        // and now querying the locked path fails (because client is not identified)
+        const queryResp = await cli.resolve((await tree.id())!, "tree/data/locked")
+        expect(queryResp.value).to.equal(null)
+
+        // if we were to identify with the wrong key then it would still fail
+        const badKey = EcdsaKey.generate()
+        cli.identify((await tree.id())!, badKey)
+        const queryResp2 = await cli.resolve((await tree.id())!, "tree/data/locked")
+        expect(queryResp2.value).to.equal(null)
+
+        // however if we identify then it should actually resolve
+        cli.identify((await tree.id())!, tree.key!)
+        const queryResp3 = await cli.resolve((await tree.id())!, "tree/data/locked")
+        expect(queryResp3.value).to.equal("worked")
+
+        repo.close()
+    })
+
+    it('supports multiple transactions', async () => {
         const repo = await Repo.memoryRepo("addsBlocks")
         // use the test server to create a query and mutate function
         const newKey = EcdsaKey.generate()
@@ -65,33 +175,7 @@ describe("Client", () => {
         repo.close()
     })
 
-    it('gets ipldblocks', async () => {
-        const repo = await Repo.memoryRepo("getBlock")
-        // use the test server to create a query and mutate function
-
-        const tree = await ChainTree.createRandom(new IpfsBlockService(repo.repo))
-        const abr = await tree.newAddBlockRequest([setDataTransaction("hi", "hi")])
-
-        const resp = await cli.addBlock(abr)
-        expect(resp.errors).to.be.undefined
-        expect(resp.valid).to.be.true
-        expect(resp.newBlocks).to.have.lengthOf(6)
-
-        const blks = await graphQLtoBlocks(resp.newBlocks)
-        const blk = await cli.get(blks[0].cid)
-        expect(blk.cid.toBaseEncodedString()).to.equal(blks[0].cid.toBaseEncodedString())
-
-        // now test that it can work to resolve through the chaintree
-        const localOnlyTree = new ChainTree({
-            tip: new CID(resp.newTip),
-            store: new BlockService(cli, repo),
-        })
-
-        expect((await localOnlyTree.resolveData("hi")).value).to.equal("hi")
-        repo.close()
-    })
-
-    it('returns touched blocks', async ()=> {
+    it('returns touched blocks', async () => {
         const repo = await Repo.memoryRepo("clientGetTouchedBlocks")
         // use the test server to create a query and mutate function
 
@@ -101,7 +185,7 @@ describe("Client", () => {
         const resp = await cli.addBlock(abr)
         expect(resp.errors).to.be.undefined
 
-        const resolveResp = await cli.resolve((await tree.id())!, "/", {touchedBlocks: true})
+        const resolveResp = await cli.resolve((await tree.id())!, "/", { touchedBlocks: true })
         expect(resolveResp.touchedBlocks).to.have.lengthOf(1)
         repo.close()
     })

@@ -8,6 +8,7 @@ import (
 	"github.com/quorumcontrol/messages/v2/build/go/services"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/testhelpers"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/types"
+	"github.com/quorumcontrol/tupelo/signer/gossip"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,8 +18,34 @@ func TestNewAggregator(t *testing.T) {
 	defer cancel()
 	ng := types.NewNotaryGroup("testnotary")
 
-	_, err := NewAggregator(ctx, NewMemoryStore(), ng)
+	_, err := NewAggregator(ctx, &AggregatorConfig{KeyValueStore: NewMemoryStore(), Group: ng})
 	require.Nil(t, err)
+}
+
+func TestPublishingNewAbrs(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ng := types.NewNotaryGroup("testnotary")
+
+	updateChan := make(chan *gossip.AddBlockWrapper, 1)
+
+	agg, err := NewAggregator(ctx, &AggregatorConfig{
+		KeyValueStore: NewMemoryStore(),
+		Group:         ng,
+		UpdateFunc: func(wrap *gossip.AddBlockWrapper) {
+			updateChan <- wrap
+		},
+	})
+	require.Nil(t, err)
+
+	abr := testhelpers.NewValidTransaction(t)
+
+	_, err = agg.Add(ctx, &abr)
+	require.Nil(t, err)
+
+	resp := <-updateChan
+	require.Equal(t, resp.GetNewTip(), abr.NewTip)
 }
 
 func TestAddingAbrs(t *testing.T) {
@@ -27,7 +54,7 @@ func TestAddingAbrs(t *testing.T) {
 
 	ng := types.NewNotaryGroup("testnotary")
 
-	agg, err := NewAggregator(ctx, NewMemoryStore(), ng)
+	agg, err := NewAggregator(ctx, &AggregatorConfig{KeyValueStore: NewMemoryStore(), Group: ng})
 	require.Nil(t, err)
 
 	t.Run("new ABR, no existing works", func(t *testing.T) {
@@ -63,7 +90,7 @@ func TestGetLatest(t *testing.T) {
 
 	ng := types.NewNotaryGroup("testnotary")
 
-	agg, err := NewAggregator(ctx, NewMemoryStore(), ng)
+	agg, err := NewAggregator(ctx, &AggregatorConfig{KeyValueStore: NewMemoryStore(), Group: ng})
 	require.Nil(t, err)
 
 	t.Run("saves state", func(t *testing.T) {
@@ -87,14 +114,43 @@ func TestGetLatest(t *testing.T) {
 	})
 }
 
-// BenchmarkAdd-12    	    1504	    861040 ns/op	  199471 B/op	    2992 allocs/op
+// BenchmarkSimplePolicy-12    	  114720	     10503 ns/op	    3863 B/op	      95 allocs/op
+func BenchmarkSimplePolicy(b *testing.B) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ng := types.NewNotaryGroup("testnotary")
+
+	agg, err := NewAggregator(ctx, &AggregatorConfig{KeyValueStore: NewMemoryStore(), Group: ng})
+	require.Nil(b, err)
+
+	treeKey, err := crypto.GenerateKey()
+	require.Nil(b, err)
+
+	abr1 := testhelpers.NewValidTransactionWithPathAndValue(b, treeKey, "/.well-known/policies/main",
+		`package main
+		allow = true
+	`)
+	_, err = agg.Add(ctx, &abr1)
+	require.Nil(b, err)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, err = agg.GetLatest(ctx, string(abr1.ObjectId))
+	}
+	b.StopTimer()
+	require.Nil(b, err)
+}
+
+// BenchmarkAdd-12    	    1537	    757477 ns/op	  228498 B/op	    3538 allocs/op
 func BenchmarkAdd(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	ng := types.NewNotaryGroup("testnotary")
 
-	agg, err := NewAggregator(ctx, NewMemoryStore(), ng)
+	agg, err := NewAggregator(ctx, &AggregatorConfig{KeyValueStore: NewMemoryStore(), Group: ng})
 	require.Nil(b, err)
 
 	txs := make([]*services.AddBlockRequest, b.N)

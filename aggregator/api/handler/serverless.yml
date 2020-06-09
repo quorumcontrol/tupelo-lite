@@ -27,13 +27,24 @@ custom:
   stage: ${opt:stage, self:provider.stage}
   # Set the table name here so we can use it while testing locally
   tableName: ${self:custom.stage}-blocks
+  identityProviderName: ${self:custom.stage}IdentityProvider
 
 provider:
   name: aws
   runtime: go1.x
+  stage: ${opt:stage, 'dev'}
   iamManagedPolicies:
     - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    - arn:aws:iam::aws:policy/AWSIoTDataAccess
+    - arn:aws:iam::aws:policy/AmazonCognitoDeveloperAuthenticatedIdentities
+  # the variable syntax below allows using the AWS::AccountId etc in the file see: https://github.com/serverless/serverless/issues/3184
+  variableSyntax: "\\${(?!AWS::)([ :a-zA-Z0-9._,\\-\\/\\(\\)]+?)}" 
   iamRoleStatements:
+    - Effect: Allow
+      Resource: "*"
+      Action:
+        - iot:AttachPolicy
+        - iot:DescribeEndpoint
     - Effect: Allow
       Action:
         - dynamodb:DescribeTable
@@ -43,49 +54,8 @@ provider:
         - dynamodb:PutItem
         - dynamodb:UpdateItem
         - dynamodb:DeleteItem
-      # Restrict our IAM role permissions to
-      # the specific table for the stage
       Resource:
         - "Fn::GetAtt": [ BlocksTable, Arn ]
-
-    - Effect: "Allow"
-      Action:
-        - "*"
-      Resource: { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "SimpleChainRepo" } ] ]  }
-
-    - Effect: "Allow"
-      Action:
-        - "s3:PutObject"
-        - "*"
-      Resource:
-        Fn::Join:
-          - ""
-          - - "arn:aws:s3:::"
-            - "Ref" : "SimpleChainRepo"
-            - "/*"
-# you can overwrite defaults here
-#  stage: dev
-#  region: us-east-1
-
-# you can add statements to the Lambda function's IAM Role here
-#  iamRoleStatements:
-#    - Effect: "Allow"
-#      Action:
-#        - "s3:ListBucket"
-#      Resource: { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "ServerlessDeploymentBucket" } ] ]  }
-#    - Effect: "Allow"
-#      Action:
-#        - "s3:PutObject"
-#      Resource:
-#        Fn::Join:
-#          - ""
-#          - - "arn:aws:s3:::"
-#            - "Ref" : "ServerlessDeploymentBucket"
-#            - "/*"
-
-# you can define service wide environment variables here
-#  environment:
-#    variable1: value1
 
 package:
   exclude:
@@ -106,52 +76,92 @@ functions:
           method: post
           cors: true
     environment:
-      # BUCKET_NAME: {"Ref": "SimpleChainRepo"}
       TABLE_NAME: ${self:custom.tableName}
-#    The following are a few example events you can configure
-#    NOTE: Please make sure to change your handler code to work with those events
-#    Check the event documentation for details
-# events:
-#    events:
-#      - http:
-#          path: users/create
-#          method: get
-#      - websocket: $connect
-#      - s3: ${env:BUCKET}
-#      - schedule: rate(10 minutes)
-#      - sns: greeter-topic
-#      - stream: arn:aws:dynamodb:region:XXXXXX:table/foo/stream/1970-01-01T00:00:00.000
-#      - alexaSkill: amzn1.ask.skill.xx-xx-xx-xx
-#      - alexaSmartHome: amzn1.ask.skill.xx-xx-xx-xx
-#      - iot:
-#          sql: "SELECT * FROM 'some_topic'"
-#      - cloudwatchEvent:
-#          event:
-#            source:
-#              - "aws.ec2"
-#            detail-type:
-#              - "EC2 Instance State-change Notification"
-#            detail:
-#              state:
-#                - pending
-#      - cloudwatchLog: '/aws/lambda/hello'
-#      - cognitoUserPool:
-#          pool: MyUserPool
-#          trigger: PreSignUp
-#      - alb:
-#          listenerArn: arn:aws:elasticloadbalancing:us-east-1:XXXXXX:listener/app/my-load-balancer/50dc6c495c0c9188/
-#          priority: 1
-#          conditions:
-#            host: example.com
-#            path: /hello
-
-#    Define function environment variables here
-#    environment:
-#      variable2: value2
+      IDENTITY_POOL: !Ref CognitoIdentityPool
+      STAGE: ${self:custom.stage}
+      IOT_POLICY_NAME: !Ref IOTReadPolicy
+      IDENTITY_PROVIDER_NAME: ${self:custom.identityProviderName}
 
 # you can add CloudFormation resource templates here
 resources:
   Resources:
+    CognitoIdentityPool:
+      Type: AWS::Cognito::IdentityPool
+      Properties:
+        # Generate a name based on the stage
+        IdentityPoolName: ${self:custom.stage}IdentityPool
+        # Don't allow unathenticated users
+        AllowUnauthenticatedIdentities: false
+        DeveloperProviderName: ${self:custom.identityProviderName}
+
+    CognitoIdentityPoolRoles:
+      Type: AWS::Cognito::IdentityPoolRoleAttachment
+      Properties:
+        IdentityPoolId:
+          Ref: CognitoIdentityPool
+        Roles:
+          authenticated:
+            Fn::GetAtt: [MQRole, Arn]
+
+    IOTReadPolicy:
+      Type: "AWS::IoT::Policy"
+      Properties:
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Resource: 
+                !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:*'
+              Action: 
+                - "iot:Connect"
+            - Effect: "Allow"
+              Resource: 
+                !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/public/*'
+              Action: 
+                - "iot:Receive"
+            - Effect: "Allow"
+              Resource: 
+                !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/public/*'
+              Action: 
+                - "iot:Subscribe"
+            - Effect: "Allow"
+              Resource: 
+                !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/public/userToUser/*'
+              Action: 
+                - "iot:Publish"
+
+    MQRole:
+      Type: AWS::IAM::Role
+      Properties: 
+        Description: "Identified users of tupelo-lite can assume this role to use MQTT"
+        AssumeRolePolicyDocument: 
+          Version: '2012-10-17'
+          Statement:
+            - Effect: 'Allow'
+              Principal:
+                Federated: 'cognito-identity.amazonaws.com'
+              Action:
+                - 'sts:AssumeRoleWithWebIdentity'
+              # Condition:
+              #   StringEquals:
+              #     'cognito-identity.amazonaws.com:aud':
+              #       Ref: CognitoIdentityPool
+              #   'ForAnyValue:StringLike':
+              #     'cognito-identity.amazonaws.com:amr': authenticated
+        Policies: 
+          - PolicyName: "ReadWriteMessageQueue"
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: "Allow"
+                  Resource: 
+                    - "*"
+                  Action:
+                    - "iot:Connect"
+                    - "iot:Publish"
+                    - "iot:Subscribe"
+                    - "iot:Receive"
+
     BlocksTable:
       Type: AWS::DynamoDB::Table
       Properties:
@@ -167,19 +177,3 @@ resources:
           Enabled: true
         # Set the capacity to auto-scale
         BillingMode: PAY_PER_REQUEST
-
-    SimpleChainRepo:
-      Type: AWS::S3::Bucket
-      Properties:
-        BucketName: simple-chain-test-repo
-
-#resources:
-#  Resources:
-#    NewResource:
-#      Type: AWS::S3::Bucket
-#      Properties:
-#        BucketName: my-new-bucket
-#  Outputs:
-#     NewOutput:
-#       Description: "Description for the output"
-#       Value: "Some output value"
