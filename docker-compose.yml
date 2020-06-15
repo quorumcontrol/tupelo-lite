@@ -1,0 +1,12 @@
+version: "3"
+services:
+  server:
+    image: golang:1.14
+    volumes:
+      - .:/app:delegated
+      - ./.tmp:/root/.cache:delegated
+      - ${GOPATH}/pkg/mod:/go/pkg/mod:delegated
+    working_dir: /app/aggregator
+    command: go run ./api/server/mqtt.go ./api/server/main.go
+    ports:
+      - 9011:9011
