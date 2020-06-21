@@ -7,8 +7,10 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
+	cbornode "github.com/ipfs/go-ipld-cbor"
 	format "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
+	"github.com/open-policy-agent/opa/rego"
 
 	"github.com/quorumcontrol/chaintree/chaintree"
 	"github.com/quorumcontrol/chaintree/dag"
@@ -16,6 +18,7 @@ import (
 	"github.com/quorumcontrol/chaintree/nodestore"
 	"github.com/quorumcontrol/chaintree/safewrap"
 	"github.com/quorumcontrol/messages/v2/build/go/services"
+	"github.com/quorumcontrol/tupelo-lite/aggregator/policy"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/types"
 	"github.com/quorumcontrol/tupelo/signer/gossip"
 )
@@ -58,6 +61,11 @@ type Aggregator struct {
 
 	configDid  string
 	configTree *chaintree.ChainTree
+
+	globalWritePolicy *rego.PreparedEvalQuery
+	hasWriteWants     bool
+	globalReadPolicy  *rego.PreparedEvalQuery
+	hasReadWants      bool
 }
 
 // AggregatorConfig is used to configure a new Aggregator
@@ -78,21 +86,48 @@ func NewAggregator(ctx context.Context, config *AggregatorConfig) (*Aggregator, 
 	if err != nil {
 		return nil, err
 	}
-	return &Aggregator{
+	a := &Aggregator{
 		keyValueStore: config.KeyValueStore,
 		DagStore:      dagStore,
 		validator:     validator,
 		group:         config.Group,
 		updateFunc:    config.UpdateFunc,
-	}, nil
+		configDid:     config.ConfigTree,
+	}
+	if a.configDid != "" {
+		err = a.setupConfigTree(ctx)
+		return a, err
+	}
+	return a, nil
 }
 
 func (a *Aggregator) setupConfigTree(ctx context.Context) error {
+	if a.configDid == "" {
+		return nil
+	}
 	tree, err := a.GetLatest(ctx, a.configDid)
 	if err != nil {
+		if err == datastore.ErrNotFound {
+			return nil // allow a not-found key
+		}
 		return fmt.Errorf("error getting tree: %w", err)
 	}
 	a.configTree = tree
+
+	writePolicy, hasWriteWants, err := policy.PolicyFromTree(ctx, "main", "wants", a, tree.Dag)
+	if err != nil {
+		return fmt.Errorf("error getting write policy: %w", err)
+	}
+	a.globalWritePolicy = writePolicy
+	a.hasWriteWants = hasWriteWants
+
+	readPolicy, hasReadWants, err := policy.PolicyFromTree(ctx, "read", "readWants", a, tree.Dag)
+	if err != nil {
+		return fmt.Errorf("error getting read policy: %w", err)
+	}
+	a.globalReadPolicy = readPolicy
+	a.hasReadWants = hasReadWants
+
 	return nil
 }
 
@@ -136,11 +171,40 @@ func (a *Aggregator) GetLatest(ctx context.Context, objectID string) (*chaintree
 	return tree, nil
 }
 
+func abrToBlockInput(abr *services.AddBlockRequest) (policy.PolicyInputMap, error) {
+	block := &chaintree.BlockWithHeaders{}
+	err := cbornode.DecodeInto(abr.Payload, block)
+	if err != nil {
+		return nil, fmt.Errorf("invalid transaction: payload is not a block: %w", err)
+	}
+	return policy.BlockToInputMap(block)
+}
+
 func (a *Aggregator) Add(ctx context.Context, abr *services.AddBlockRequest) (*AddResponse, error) {
 	logger.Debugf("add %s %d", string(abr.ObjectId), abr.Height)
 	wrapper := &gossip.AddBlockWrapper{
 		AddBlockRequest: abr,
 	}
+
+	if a.globalWritePolicy != nil {
+		inputMap, err := abrToBlockInput(abr)
+		if err != nil {
+			return nil, fmt.Errorf("error converting abr to input: %w", err)
+		}
+		valid, err := policy.PolicyValidator(ctx, *a.globalWritePolicy, a.configTree.Dag, a, a.hasWriteWants, inputMap)
+		if err != nil {
+			return nil, fmt.Errorf("error validating: %w", err)
+		}
+		if !valid {
+			return &AddResponse{
+				NewTip:   cid.Undef,
+				IsValid:  false,
+				NewNodes: nil,
+				Wrapper:  wrapper,
+			}, nil
+		}
+	}
+
 	newTip, isValid, newNodes, err := a.validator.ValidateAbr(wrapper)
 	if !isValid {
 		return nil, ErrInvalidBlock
@@ -169,6 +233,13 @@ func (a *Aggregator) Add(ctx context.Context, abr *services.AddBlockRequest) (*A
 	err = a.keyValueStore.Put(datastore.NewKey(did), newTip.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("error putting key: %w", err)
+	}
+
+	if string(abr.ObjectId) == a.configDid {
+		err = a.setupConfigTree(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("error setting up policies: %w", err)
+		}
 	}
 
 	if a.updateFunc != nil {

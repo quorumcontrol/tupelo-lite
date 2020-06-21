@@ -2,10 +2,16 @@ package aggregator
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/quorumcontrol/chaintree/chaintree"
+	"github.com/quorumcontrol/chaintree/nodestore"
+	"github.com/quorumcontrol/chaintree/safewrap"
 	"github.com/quorumcontrol/messages/v2/build/go/services"
+	"github.com/quorumcontrol/messages/v2/build/go/transactions"
+	"github.com/quorumcontrol/tupelo/sdk/consensus"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/testhelpers"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/types"
 	"github.com/quorumcontrol/tupelo/signer/gossip"
@@ -112,6 +118,112 @@ func TestGetLatest(t *testing.T) {
 		assert.Len(t, remain, 0)
 		assert.Equal(t, "value", resp)
 	})
+}
+
+func TestGlobalPolicies(t *testing.T) {
+
+	ng := types.NewNotaryGroup("testnotary")
+
+	t.Run("works when did does not yet exist", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		config := &AggregatorConfig{
+			KeyValueStore: NewMemoryStore(),
+			Group:         ng,
+			ConfigTree:    "did:tupelo:doesnotyetexist",
+		}
+
+		_, err := NewAggregator(ctx, config)
+		require.Nil(t, err)
+	})
+
+	t.Run("installs new global policy on tree updates", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		treeKey, err := crypto.GenerateKey()
+		require.Nil(t, err)
+		did := consensus.EcdsaPubkeyToDid(treeKey.PublicKey)
+
+		config := &AggregatorConfig{
+			KeyValueStore: NewMemoryStore(),
+			Group:         ng,
+			ConfigTree:    did,
+		}
+
+		agg, err := NewAggregator(ctx, config)
+
+		policies := map[string]string{
+			"main": `
+				package main
+				default allow = true
+	
+				allow = false {
+					contains(input.transactions[_].setDataPayload.path, "in-this-house-we-do-not-use-this")
+				}
+			`,
+		}
+
+		abr1 := NewValidTransactionWithPathAndValue(t, treeKey, ".well-known/policies", policies)
+		_, err = agg.Add(ctx, &abr1)
+		require.Nil(t, err)
+
+		require.NotNil(t, agg.globalWritePolicy)
+
+		// now test that policy is enforced
+		treeKey2, err := crypto.GenerateKey()
+		require.Nil(t, err)
+
+		abr2 := NewValidTransactionWithPathAndValue(t, treeKey2, "in-this-house-we-do-not-use-this", "this should never set")
+		resp, err := agg.Add(ctx, &abr2)
+		require.Nil(t, err)
+		require.False(t, resp.IsValid)
+	})
+
+}
+
+func NewValidTransactionWithPathAndValue(t testing.TB, treeKey *ecdsa.PrivateKey, path string, value interface{}) services.AddBlockRequest {
+	ctx := context.TODO()
+	sw := safewrap.SafeWrap{}
+
+	txn, err := chaintree.NewSetDataTransaction(path, value)
+	require.Nil(t, err)
+
+	unsignedBlock := chaintree.BlockWithHeaders{
+		Block: chaintree.Block{
+			PreviousTip:  nil,
+			Height:       0,
+			Transactions: []*transactions.Transaction{txn},
+		},
+	}
+
+	treeDID := consensus.AddrToDid(crypto.PubkeyToAddress(treeKey.PublicKey).String())
+
+	nodeStore := nodestore.MustMemoryStore(ctx)
+	emptyTree := consensus.NewEmptyTree(ctx, treeDID, nodeStore)
+	emptyTip := emptyTree.Tip
+	testTree, err := chaintree.NewChainTree(ctx, emptyTree, nil, consensus.DefaultTransactors)
+	require.Nil(t, err)
+
+	blockWithHeaders, err := consensus.SignBlock(ctx, &unsignedBlock, treeKey)
+	require.Nil(t, err)
+
+	_, err = testTree.ProcessBlock(ctx, blockWithHeaders)
+	require.Nil(t, err)
+	nodes := testhelpers.DagToByteNodes(t, testTree.Dag)
+
+	bits := sw.WrapObject(blockWithHeaders).RawData()
+	require.Nil(t, sw.Err)
+
+	return services.AddBlockRequest{
+		PreviousTip: emptyTip.Bytes(),
+		Height:      blockWithHeaders.Height,
+		NewTip:      testTree.Dag.Tip.Bytes(),
+		Payload:     bits,
+		State:       nodes,
+		ObjectId:    []byte(treeDID),
+	}
 }
 
 // BenchmarkSimplePolicy-12    	  112168	     10746 ns/op	    3860 B/op	      95 allocs/op

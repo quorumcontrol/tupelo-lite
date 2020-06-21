@@ -18,7 +18,7 @@ import (
 
 var logger = logging.Logger("policy")
 
-type policyInputMap map[string]interface{}
+type PolicyInputMap map[string]interface{}
 
 func errToCoded(err error) chaintree.CodedError {
 	if err == nil {
@@ -107,13 +107,13 @@ func Validator(ctx context.Context, getter graftabledag.DagGetter, tree *dag.Dag
 		return true, nil
 	}
 
-	inputMap, err := blockToInputMap(blockWithHeaders)
+	inputMap, err := BlockToInputMap(blockWithHeaders)
 
-	valid, err := policyValidator(ctx, *query, tree, getter, hasWants, inputMap)
+	valid, err := PolicyValidator(ctx, *query, tree, getter, hasWants, inputMap)
 	return valid, errToCoded(err)
 }
 
-func policyValidator(ctx context.Context, query rego.PreparedEvalQuery, tree *dag.Dag, getter graftabledag.DagGetter, hasWants bool, inputMap policyInputMap) (bool, error) {
+func PolicyValidator(ctx context.Context, query rego.PreparedEvalQuery, tree *dag.Dag, getter graftabledag.DagGetter, hasWants bool, inputMap PolicyInputMap) (bool, error) {
 	results, err := query.Eval(ctx, rego.EvalInput(inputMap))
 	if err != nil {
 		return false, errToCoded(fmt.Errorf("error evaluating: %w", err))
@@ -207,8 +207,8 @@ func pathsToVals(ctx context.Context, paths []string, tree *dag.Dag, getter graf
 	return pathToValueMap, nil
 }
 
-func blockToInputMap(blockWithHeaders *chaintree.BlockWithHeaders) (policyInputMap, error) {
-	inputMap := make(policyInputMap)
+func BlockToInputMap(blockWithHeaders *chaintree.BlockWithHeaders) (PolicyInputMap, error) {
+	inputMap := make(PolicyInputMap)
 
 	err := typecaster.ToType(blockWithHeaders, &inputMap)
 	if err != nil {

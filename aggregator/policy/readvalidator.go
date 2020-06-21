@@ -22,7 +22,7 @@ type ReadInput struct {
 	Identity *identity.Identity
 }
 
-func (ri *ReadInput) toInputMap() (policyInputMap, error) {
+func (ri *ReadInput) toInputMap() (PolicyInputMap, error) {
 	inputMap := make(map[string]interface{})
 
 	err := typecaster.ToType(ri, &inputMap)
@@ -45,6 +45,6 @@ func ReadValidator(ctx context.Context, tree *dag.Dag, getter graftabledag.DagGe
 		return false, errToCoded(fmt.Errorf("error getting input: %w", err))
 	}
 
-	isValid, err := policyValidator(ctx, *query, tree, getter, hasWants, inputMap)
+	isValid, err := PolicyValidator(ctx, *query, tree, getter, hasWants, inputMap)
 	return isValid, errToCoded(err)
 }
