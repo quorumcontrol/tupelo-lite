@@ -114,7 +114,7 @@ func TestGetLatest(t *testing.T) {
 	})
 }
 
-// BenchmarkSimplePolicy-12    	  114720	     10503 ns/op	    3863 B/op	      95 allocs/op
+// BenchmarkSimplePolicy-12    	  112168	     10746 ns/op	    3860 B/op	      95 allocs/op
 func BenchmarkSimplePolicy(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -143,7 +143,7 @@ func BenchmarkSimplePolicy(b *testing.B) {
 	require.Nil(b, err)
 }
 
-// BenchmarkAdd-12    	    1537	    757477 ns/op	  228498 B/op	    3538 allocs/op
+// BenchmarkAdd-12    	    1485	    781765 ns/op	  228452 B/op	    3537 allocs/op
 func BenchmarkAdd(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

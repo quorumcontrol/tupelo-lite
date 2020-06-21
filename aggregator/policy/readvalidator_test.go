@@ -39,17 +39,29 @@ func TestBasicReadPolicy(t *testing.T) {
 		Sub: "doesnotmatterforthistest",
 	}
 
-	valid, err := ReadValidator(ctx, tree, testgetter.NewDagGetter(t, ctx), "/tree/data", id)
+	valid, err := ReadValidator(ctx, tree, testgetter.NewDagGetter(t, ctx), &ReadInput{
+		Object:   did,
+		Path:     "/tree/data",
+		Identity: id,
+	})
 	require.Nil(t, err)
 	require.True(t, valid)
 
-	valid, err = ReadValidator(ctx, tree, testgetter.NewDagGetter(t, ctx), "/tree/data/locked", id)
+	valid, err = ReadValidator(ctx, tree, testgetter.NewDagGetter(t, ctx), &ReadInput{
+		Object:   did,
+		Path:     "/tree/data/locked",
+		Identity: id,
+	})
 	require.Nil(t, err)
 	require.False(t, valid)
 
 	// test it works with a nil identity
 
-	valid, err = ReadValidator(ctx, tree, testgetter.NewDagGetter(t, ctx), "/tree/data", nil)
+	valid, err = ReadValidator(ctx, tree, testgetter.NewDagGetter(t, ctx), &ReadInput{
+		Object:   did,
+		Path:     "/tree/data",
+		Identity: nil,
+	})
 	require.Nil(t, err)
 	require.True(t, valid)
 }
@@ -86,7 +98,11 @@ func TestReadPolicyWithWants(t *testing.T) {
 	}
 
 	// it will not allow a read because the wants aren't fulfilled
-	valid, err := ReadValidator(ctx, tree, testgetter.NewDagGetter(t, ctx), "/tree/data", id)
+	valid, err := ReadValidator(ctx, tree, testgetter.NewDagGetter(t, ctx), &ReadInput{
+		Object:   did,
+		Path:     "/tree/data",
+		Identity: id,
+	})
 	require.False(t, valid)
 	require.Nil(t, err)
 
@@ -94,7 +110,11 @@ func TestReadPolicyWithWants(t *testing.T) {
 	treeWithValue, err := tree.SetAsLink(ctx, []string{"tree", "data", "somePath"}, "helloWorld")
 	require.Nil(t, err)
 
-	valid, err = ReadValidator(ctx, treeWithValue, testgetter.NewDagGetter(t, ctx), "/tree/data/locked", id)
+	valid, err = ReadValidator(ctx, treeWithValue, testgetter.NewDagGetter(t, ctx), &ReadInput{
+		Object:   did,
+		Path:     "/tree/data/locked",
+		Identity: id,
+	})
 	require.Nil(t, err)
 	require.False(t, valid)
 }

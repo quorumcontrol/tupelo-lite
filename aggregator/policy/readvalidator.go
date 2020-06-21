@@ -16,6 +16,7 @@ func init() {
 }
 
 type ReadInput struct {
+	Object   string
 	Method   string
 	Path     string
 	Identity *identity.Identity
@@ -28,7 +29,7 @@ func (ri *ReadInput) toInputMap() (policyInputMap, error) {
 	return inputMap, err
 }
 
-func ReadValidator(ctx context.Context, tree *dag.Dag, getter graftabledag.DagGetter, path string, identity *identity.Identity) (bool, chaintree.CodedError) {
+func ReadValidator(ctx context.Context, tree *dag.Dag, getter graftabledag.DagGetter, input *ReadInput) (bool, chaintree.CodedError) {
 	query, hasWants, err := PolicyFromTree(ctx, "read", "readWants", getter, tree)
 	if err != nil {
 		return false, errToCoded(err)
@@ -38,11 +39,7 @@ func ReadValidator(ctx context.Context, tree *dag.Dag, getter graftabledag.DagGe
 		return true, nil
 	}
 
-	inputMap, err := (&ReadInput{
-		Method:   "GET",
-		Path:     path,
-		Identity: identity,
-	}).toInputMap()
+	inputMap, err := input.toInputMap()
 
 	if err != nil {
 		return false, errToCoded(fmt.Errorf("error getting input: %w", err))
