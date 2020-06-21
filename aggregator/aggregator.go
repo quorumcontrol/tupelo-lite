@@ -55,6 +55,9 @@ type Aggregator struct {
 	keyValueStore datastore.Batching
 	group         *types.NotaryGroup
 	updateFunc    UpdateFunc
+
+	configDid  string
+	configTree *chaintree.ChainTree
 }
 
 // AggregatorConfig is used to configure a new Aggregator
@@ -62,6 +65,8 @@ type AggregatorConfig struct {
 	KeyValueStore datastore.Batching
 	Group         *types.NotaryGroup
 	UpdateFunc    UpdateFunc
+
+	ConfigTree string // DID
 }
 
 func NewAggregator(ctx context.Context, config *AggregatorConfig) (*Aggregator, error) {
@@ -80,6 +85,15 @@ func NewAggregator(ctx context.Context, config *AggregatorConfig) (*Aggregator, 
 		group:         config.Group,
 		updateFunc:    config.UpdateFunc,
 	}, nil
+}
+
+func (a *Aggregator) setupConfigTree(ctx context.Context) error {
+	tree, err := a.GetLatest(ctx, a.configDid)
+	if err != nil {
+		return fmt.Errorf("error getting tree: %w", err)
+	}
+	a.configTree = tree
+	return nil
 }
 
 func (a *Aggregator) GetTip(ctx context.Context, objectID string) (*cid.Cid, error) {

@@ -117,7 +117,7 @@ func (r *Resolver) Resolve(ctx context.Context, input ResolveInput) (*ResolvePay
 		return nil, fmt.Errorf("error getting latest: %w", err)
 	}
 
-	valid, err := policy.ReadValidator(ctx, latest.Dag, strings.Join(path, "/"), requester)
+	valid, err := policy.ReadValidator(ctx, latest.Dag, r.Aggregator, strings.Join(path, "/"), requester)
 	if err != nil {
 		return nil, fmt.Errorf("error validating: %w", err)
 	}
