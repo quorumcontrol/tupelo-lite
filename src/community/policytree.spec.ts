@@ -1,17 +1,13 @@
 import 'mocha'
 import {expect} from 'chai'
 import Repo from '../repo/repo'
-import { Dag } from '../chaintree/dag/dag';
 import { localURL, Community } from './community';
 import {PolicyTree} from './policytree'
-import { Client } from '../client';
 import { EcdsaKey } from '../ecdsa';
 import { setDataTransaction } from '../chaintree';
-import {defaultAwsConfig} from '../pubsub/mqtt'
 import debug from 'debug';
 
 const log = debug("policytree.spec")
-const remoteUrl = "https://a7s7o22i6d.execute-api.us-east-1.amazonaws.com/demo/graphql"
 
 describe("PolicyTree", ()=> {
 
@@ -45,17 +41,16 @@ describe("PolicyTree", ()=> {
                    expect((await tree2.resolveData("hi")).value).to.equal("updated")
                  } catch(e) {
                      reject(e)
+                 } finally {
+                    sub.unsubscribe()
                  }
-                 sub.unsubscribe()
                  resolve()
            })
             setTimeout(async ()=> {
                log("play transactions")
                await community.playTransactions(tree, [setDataTransaction("/hi", "updated")])
-            }, 1000)
-           
+            }, 100)
         })
-      
     })
 
     it('resolves using remote resolve', async ()=> {
