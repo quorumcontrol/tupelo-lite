@@ -3,6 +3,7 @@ package aggregator
 import (
 	"context"
 	"crypto/ecdsa"
+	"fmt"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -11,6 +12,7 @@ import (
 	"github.com/quorumcontrol/chaintree/safewrap"
 	"github.com/quorumcontrol/messages/v2/build/go/services"
 	"github.com/quorumcontrol/messages/v2/build/go/transactions"
+	"github.com/quorumcontrol/tupelo-lite/aggregator/identity"
 	"github.com/quorumcontrol/tupelo/sdk/consensus"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/testhelpers"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/types"
@@ -181,8 +183,126 @@ func TestGlobalPolicies(t *testing.T) {
 		require.False(t, resp.IsValid)
 	})
 
+	t.Run("enforces global read policies", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		configTreeKey, err := crypto.GenerateKey()
+		require.Nil(t, err)
+		did := consensus.EcdsaPubkeyToDid(configTreeKey.PublicKey)
+
+		config := &AggregatorConfig{
+			KeyValueStore: NewMemoryStore(),
+			Group:         ng,
+			ConfigTree:    did,
+		}
+
+		agg, err := NewAggregator(ctx, config)
+
+		// create a policy that forbids anything with the path bad news
+		policies := map[string]string{
+			"read": `
+				package read
+				default allow = true
+	
+				allow = false {
+					contains(input.path, "badnews")
+				}
+			`,
+		}
+
+		abr1 := NewValidTransactionWithPathAndValue(t, configTreeKey, ".well-known/policies", policies)
+		_, err = agg.Add(ctx, &abr1)
+		require.Nil(t, err)
+
+		require.NotNil(t, agg.globalReadPolicy)
+
+		// now create a chaintree with a "badnews" path in it and assert we can't read it
+		treeKey, err := crypto.GenerateKey()
+		require.Nil(t, err)
+
+		abr2 := NewValidTransactionWithPathAndValue(t, treeKey, "badnews/ok", "foo")
+		_, err = agg.Add(ctx, &abr2)
+		require.Nil(t, err)
+
+		resp, err := agg.ResolveWithReadControls(ctx, nil, string(abr2.ObjectId), []string{"tree", "data", "badnews", "ok"})
+		require.Nil(t, err)
+		assert.Nil(t, resp.Value)
+	})
 }
 
+func TestResolveWithReadControls(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ng := types.NewNotaryGroup("testnotary")
+
+	config := &AggregatorConfig{
+		KeyValueStore: NewMemoryStore(),
+		Group:         ng,
+	}
+
+	agg, err := NewAggregator(ctx, config)
+	require.Nil(t, err)
+
+	t.Run("without a policy resolves", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		treeKey, err := crypto.GenerateKey()
+		require.Nil(t, err)
+
+		abr := NewValidTransactionWithPathAndValue(t, treeKey, "/my/data", "foo")
+		_, err = agg.Add(ctx, &abr)
+		require.Nil(t, err)
+
+		resp, err := agg.ResolveWithReadControls(ctx, nil, string(abr.ObjectId), []string{"tree", "data", "my", "data"})
+		require.Nil(t, err)
+		assert.Equal(t, resp.Value, "foo")
+	})
+
+	t.Run("with a read policy", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		expectedIdentity := "did:tupelo:someone"
+
+		treeKey, err := crypto.GenerateKey()
+		require.Nil(t, err)
+
+		policies := map[string]string{
+			"read": fmt.Sprintf(`
+				package read
+				default allow = false
+	
+				allow {
+					input.identity.sub == "%s"
+				}
+			`, expectedIdentity),
+		}
+
+		abr := NewValidTransactionWithPathAndValue(t, treeKey, ".well-known/policies", policies)
+		_, err = agg.Add(ctx, &abr)
+		require.Nil(t, err)
+
+		// it denies read with unknown identity
+		resp, err := agg.ResolveWithReadControls(ctx, nil, string(abr.ObjectId), []string{"tree", "data", ".well-known", "policies"})
+		require.Nil(t, err)
+		assert.Equal(t, resp.Value, nil)
+		assert.Len(t, resp.RemainingPath, 4)
+
+		// it allows when the identity is correct
+		respWithIdentity, err := agg.ResolveWithReadControls(ctx, &identity.Identity{
+			Iss: expectedIdentity,
+			Sub: expectedIdentity,
+		}, string(abr.ObjectId), []string{"tree", "data", ".well-known", "policies"})
+		require.Nil(t, err)
+		assert.NotNil(t, respWithIdentity.Value)
+		assert.Len(t, respWithIdentity.RemainingPath, 0)
+	})
+
+}
+
+// This is only slightly different than the one in testhelpers (it takes an interface value rather than a string value)
 func NewValidTransactionWithPathAndValue(t testing.TB, treeKey *ecdsa.PrivateKey, path string, value interface{}) services.AddBlockRequest {
 	ctx := context.TODO()
 	sw := safewrap.SafeWrap{}

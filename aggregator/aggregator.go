@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
@@ -18,8 +19,10 @@ import (
 	"github.com/quorumcontrol/chaintree/nodestore"
 	"github.com/quorumcontrol/chaintree/safewrap"
 	"github.com/quorumcontrol/messages/v2/build/go/services"
+	"github.com/quorumcontrol/tupelo-lite/aggregator/identity"
 	"github.com/quorumcontrol/tupelo-lite/aggregator/policy"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/types"
+	"github.com/quorumcontrol/tupelo/sdk/reftracking"
 	"github.com/quorumcontrol/tupelo/signer/gossip"
 )
 
@@ -49,6 +52,12 @@ type AddResponse struct {
 	NewTip   cid.Cid
 	NewNodes []format.Node
 	Wrapper  *gossip.AddBlockWrapper
+}
+
+type ResolveResponse struct {
+	RemainingPath []string
+	Value         interface{}
+	TouchedBlocks []format.Node
 }
 
 type Aggregator struct {
@@ -147,6 +156,73 @@ func (a *Aggregator) GetTip(ctx context.Context, objectID string) (*cid.Cid, err
 	return &tip, nil
 }
 
+func (a *Aggregator) ResolveWithReadControls(ctx context.Context, id *identity.Identity, objectID string, path []string) (*ResolveResponse, error) {
+	latest, err := a.GetLatest(ctx, objectID)
+
+	if err == ErrNotFound {
+		logger.Debugf("resolve %s not found", objectID)
+		return &ResolveResponse{
+			RemainingPath: path,
+		}, nil
+	}
+	if err != nil {
+		logger.Errorf("error getting latest %s %v", objectID, err)
+		return nil, fmt.Errorf("error getting latest: %w", err)
+	}
+	globalValid, err := a.evaluateGlobalReadPolicy(ctx, id, objectID, path)
+	if err != nil {
+		return nil, fmt.Errorf("error validating: %w", err)
+	}
+
+	logger.Debugf("globalReadValidator: %v", globalValid)
+	if !globalValid {
+		// if not valid then just return as if it was not found
+		return &ResolveResponse{
+			RemainingPath: path,
+		}, nil
+	}
+
+	valid, err := policy.ReadValidator(ctx, latest.Dag, a, &policy.ReadInput{
+		Method:   "GET",
+		Object:   objectID,
+		Path:     strings.Join(path, "/"),
+		Identity: id,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error validating: %w", err)
+	}
+	logger.Debugf("readValidator: %v", valid)
+	if !valid {
+		// if not valid then just return as if it was not found
+		return &ResolveResponse{
+			RemainingPath: path,
+		}, nil
+	}
+
+	trackedTree, tracker, err := reftracking.WrapTree(ctx, latest)
+	if err != nil {
+		return nil, fmt.Errorf("error creating reference tracker: %v", err)
+	}
+
+	val, remain, err := trackedTree.Dag.Resolve(ctx, path)
+	if err != nil {
+		logger.Errorf("error resolving %s %v", objectID, err)
+		return nil, fmt.Errorf("error resolving: %v", err)
+	}
+
+	// Grab the nodes that were actually used:
+	touchedNodes, err := tracker.TouchedNodes(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting touched nodes: %w", err)
+	}
+
+	return &ResolveResponse{
+		Value:         val,
+		RemainingPath: remain,
+		TouchedBlocks: touchedNodes,
+	}, nil
+}
+
 func (a *Aggregator) GetLatest(ctx context.Context, objectID string) (*chaintree.ChainTree, error) {
 	tip, err := a.GetTip(ctx, objectID)
 	if err != nil {
@@ -186,23 +262,14 @@ func (a *Aggregator) Add(ctx context.Context, abr *services.AddBlockRequest) (*A
 		AddBlockRequest: abr,
 	}
 
-	if a.globalWritePolicy != nil {
-		inputMap, err := abrToBlockInput(abr)
-		if err != nil {
-			return nil, fmt.Errorf("error converting abr to input: %w", err)
-		}
-		valid, err := policy.PolicyValidator(ctx, *a.globalWritePolicy, a.configTree.Dag, a, a.hasWriteWants, inputMap)
-		if err != nil {
-			return nil, fmt.Errorf("error validating: %w", err)
-		}
-		if !valid {
-			return &AddResponse{
-				NewTip:   cid.Undef,
-				IsValid:  false,
-				NewNodes: nil,
-				Wrapper:  wrapper,
-			}, nil
-		}
+	valid, err := a.evaluateGlobalWritePolicy(ctx, abr)
+	if !valid {
+		return &AddResponse{
+			NewTip:   cid.Undef,
+			IsValid:  false,
+			NewNodes: nil,
+			Wrapper:  wrapper,
+		}, nil
 	}
 
 	newTip, isValid, newNodes, err := a.validator.ValidateAbr(wrapper)
@@ -277,4 +344,37 @@ func (a *Aggregator) storeState(ctx context.Context, wrapper *gossip.AddBlockWra
 	}
 
 	return nil
+}
+
+func (a *Aggregator) evaluateGlobalWritePolicy(ctx context.Context, abr *services.AddBlockRequest) (bool, error) {
+	if a.globalWritePolicy != nil {
+		inputMap, err := abrToBlockInput(abr)
+		if err != nil {
+			return false, fmt.Errorf("error converting abr to input: %w", err)
+		}
+		valid, err := policy.PolicyValidator(ctx, *a.globalWritePolicy, a.configTree.Dag, a, a.hasWriteWants, inputMap)
+		if err != nil {
+			return false, fmt.Errorf("error validating: %w", err)
+		}
+		return valid, err
+	}
+	return true, nil
+}
+
+func (a *Aggregator) evaluateGlobalReadPolicy(ctx context.Context, id *identity.Identity, objectID string, path []string) (bool, error) {
+	if a.globalReadPolicy != nil {
+		inputMap, err := (&policy.ReadInput{
+			Method:   "GET",
+			Identity: id,
+			Object:   objectID,
+			Path:     strings.Join(path, "/"),
+		}).ToInputMap()
+		if err != nil {
+			return false, fmt.Errorf("error getting input: %w", err)
+		}
+
+		isValid, err := policy.PolicyValidator(ctx, *a.globalReadPolicy, a.configTree.Dag, a, a.hasReadWants, inputMap)
+		return isValid, err
+	}
+	return true, nil
 }
