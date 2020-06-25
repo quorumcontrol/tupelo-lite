@@ -20,8 +20,7 @@ require (
 	github.com/quorumcontrol/go-ds-dynamodb v0.0.0-20200523131057-fad30d0593bb
 	github.com/quorumcontrol/messages/v2 v2.1.3-0.20200129115245-2bfec5177653
 	github.com/quorumcontrol/tupelo v0.7.2-0.20200523064345-9250e46da3f4
-	github.com/quorumcontrol/tupelo-go-sdk v0.6.0
-	github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b
+	github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b // indirect
 	github.com/stretchr/objx v0.2.0 // indirect
 	github.com/stretchr/testify v1.5.1
 	github.com/ugorji/go v1.1.7 // indirect
