@@ -73,6 +73,7 @@ export class Community {
             }
             log("tree: ", did, " updated to: ", new CID(resp.newTip).toBaseEncodedString())
             await updateChainTreeWithResponse(tree, resp)
+            tree.events.emit('update')
         } catch(err) {
             console.error("playTransactions error: ", err)
             throw err
