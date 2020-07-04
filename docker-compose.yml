@@ -10,3 +10,4 @@ services:
     command: go run ./api/server/mqtt.go ./api/server/main.go
     ports:
       - 9011:9011
+      - 8081:8081

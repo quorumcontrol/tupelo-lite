@@ -18,7 +18,6 @@ import (
 	"github.com/quorumcontrol/tupelo-lite/aggregator/identity"
 	"github.com/quorumcontrol/tupelo-lite/aggregator/policy"
 	"github.com/quorumcontrol/tupelo/sdk/gossip/types"
-	"github.com/quorumcontrol/tupelo/sdk/reftracking"
 )
 
 const IdentityContextKey = "tupelo-lite:identity"
@@ -105,54 +104,18 @@ func (r *Resolver) Resolve(ctx context.Context, input ResolveInput) (*ResolvePay
 	logger.Infof("resolving %s %s with requester %v", input.Input.Did, input.Input.Path, requester)
 	path := strings.Split(strings.TrimPrefix(input.Input.Path, "/"), "/")
 
-	latest, err := r.Aggregator.GetLatest(ctx, input.Input.Did)
-	if err == aggregator.ErrNotFound {
-		logger.Debugf("resolve %s not found", input.Input.Did)
-		return &ResolvePayload{
-			RemainingPath: path,
-		}, nil
-	}
+	resp, err := r.Aggregator.ResolveWithReadControls(ctx, requester, input.Input.Did, path)
+
 	if err != nil {
 		logger.Errorf("error getting latest %s %v", input.Input.Did, err)
 		return nil, fmt.Errorf("error getting latest: %w", err)
 	}
-
-	valid, err := policy.ReadValidator(ctx, latest.Dag, strings.Join(path, "/"), requester)
-	if err != nil {
-		return nil, fmt.Errorf("error validating: %w", err)
-	}
-	logger.Debugf("readValidator: %v", valid)
-	if !valid {
-		// if not valid then just return as if it was not found
-
-		return &ResolvePayload{
-			RemainingPath: path,
-		}, nil
-	}
-
-	trackedTree, tracker, err := reftracking.WrapTree(ctx, latest)
-	if err != nil {
-		return nil, fmt.Errorf("error creating reference tracker: %v", err)
-	}
-
-	val, remain, err := trackedTree.Dag.Resolve(ctx, path)
-	if err != nil {
-		logger.Errorf("error resolving %s %v", input.Input.Did, err)
-		return nil, fmt.Errorf("error resolving: %v", err)
-	}
-
-	// Grab the nodes that were actually used:
-	touchedNodes, err := tracker.TouchedNodes(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("error getting touched nodes: %w", err)
-	}
-
-	blocks := blocksToGraphQLBlocks(touchedNodes)
+	blocks := blocksToGraphQLBlocks(resp.TouchedBlocks)
 
 	return &ResolvePayload{
-		RemainingPath: remain,
+		RemainingPath: resp.RemainingPath,
 		Value: &JSON{
-			Object: val,
+			Object: resp.Value,
 		},
 		TouchedBlocks: &blocks,
 	}, nil

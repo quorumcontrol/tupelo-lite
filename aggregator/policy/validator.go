@@ -18,7 +18,12 @@ import (
 
 var logger = logging.Logger("policy")
 
+type PolicyInputMap map[string]interface{}
+
 func errToCoded(err error) chaintree.CodedError {
+	if err == nil {
+		return nil
+	}
 	return &consensus.ErrorCode{Memo: err.Error(), Code: consensus.ErrUnknown}
 }
 
@@ -93,52 +98,22 @@ policies := map[string]string{
 
 */
 func Validator(ctx context.Context, getter graftabledag.DagGetter, tree *dag.Dag, blockWithHeaders *chaintree.BlockWithHeaders) (bool, chaintree.CodedError) {
-	policies, remain, err := tree.Resolve(ctx, policyPath)
+	query, hasWants, err := PolicyFromTree(ctx, "main", "wants", getter, tree)
 	if err != nil {
-		return false, errToCoded(fmt.Errorf("error getting policy: %v", err))
+		return false, errToCoded(err)
 	}
-	if len(remain) > 0 {
+	// if there is no query and no error then assume no policies
+	if query == nil {
 		return true, nil
 	}
 
-	// otherwise we have a policy map and we should evaluate
+	inputMap, err := BlockToInputMap(blockWithHeaders)
 
-	policyMap, ok := policies.(map[string]interface{})
-	if !ok {
-		return false, errToCoded(fmt.Errorf("error converting poicies: %T %v", policies, policies))
-	}
+	valid, err := PolicyValidator(ctx, *query, tree, getter, hasWants, inputMap)
+	return valid, errToCoded(err)
+}
 
-	var modules []func(*rego.Rego)
-
-	for k := range policyMap {
-		policy, _, err := tree.Resolve(ctx, append(policyPath, k))
-		if err != nil {
-			return false, errToCoded(fmt.Errorf("error resolving: %v", policies))
-		}
-		modules = append(modules, rego.Module(k, policy.(string)))
-	}
-
-	_, hasWants := policyMap["wants"]
-	queryString := "allow = data.main.allow"
-	if hasWants {
-		queryString += "; wants = data.wants.paths"
-	}
-
-	query, err := rego.New(
-		append(modules, rego.Query(queryString))...,
-	).PrepareForEval(ctx)
-
-	if err != nil {
-		return false, errToCoded(fmt.Errorf("error evaluating: %w", err))
-	}
-
-	inputMap := make(map[string]interface{})
-
-	err = typecaster.ToType(blockWithHeaders, &inputMap)
-	if err != nil {
-		return false, errToCoded(fmt.Errorf("error getting input"))
-	}
-
+func PolicyValidator(ctx context.Context, query rego.PreparedEvalQuery, tree *dag.Dag, getter graftabledag.DagGetter, hasWants bool, inputMap PolicyInputMap) (bool, error) {
 	results, err := query.Eval(ctx, rego.EvalInput(inputMap))
 	if err != nil {
 		return false, errToCoded(fmt.Errorf("error evaluating: %w", err))
@@ -156,46 +131,18 @@ func Validator(ctx context.Context, getter graftabledag.DagGetter, tree *dag.Dag
 		if !ok {
 			return false, errToCoded(fmt.Errorf("unknown result type: %T", result))
 		}
-		wantResults := make(map[string]interface{})
-		for _, pathInterface := range result {
-			pathStr, ok := pathInterface.(string)
-			if !ok {
-				return false, errToCoded(fmt.Errorf("error resolving unknown path type: %T", pathInterface))
-			}
-
-			var actingDag *dag.Dag
-			var path = []string{}
-
-			if strings.HasPrefix(pathStr, "did:tupelo") {
-				pathParts := strings.Split(pathStr, "/")
-				latest, err := getter.GetLatest(ctx, pathParts[0])
-				if err != nil {
-					return false, errToCoded(fmt.Errorf("error getting dag: %w", err))
-				}
-				path = pathParts[1:]
-				actingDag = latest.Dag
-			} else {
-				path = strings.Split(pathStr, "/")
-				actingDag = tree
-			}
-			graftingDag, err := graftabledag.New(actingDag, getter)
-			if err != nil {
-				return false, errToCoded(fmt.Errorf("error creating graftable dag: %w", err))
-			}
-
-			val, _, err := graftingDag.GlobalResolve(ctx, path)
-			if err != nil {
-				return false, errToCoded(fmt.Errorf("error resolving: %w", err))
-			}
-			wantResults[pathStr] = val
+		wantResults, err := pathsToVals(ctx, interfaceStringsToStrings(result), tree, getter)
+		if err != nil {
+			return false, errToCoded(fmt.Errorf("error getting paths: %w", err))
 		}
+
 		inputMap["paths"] = wantResults
 		results, err := query.Eval(ctx, rego.EvalInput(inputMap))
 		if err != nil {
 			return false, errToCoded(fmt.Errorf("error evaluating: %w", err))
 		}
 		if len(results) == 0 {
-			return false, errToCoded(fmt.Errorf("undefined results: %w", err))
+			return false, errToCoded(fmt.Errorf("undefined results after wants: %w", err))
 		}
 		return allowResult(results)
 	}
@@ -203,9 +150,9 @@ func Validator(ctx context.Context, getter graftabledag.DagGetter, tree *dag.Dag
 	return allowResult(results)
 }
 
-func allowResult(results rego.ResultSet) (bool, chaintree.CodedError) {
+func allowResult(results rego.ResultSet) (bool, error) {
 	if result, ok := results[0].Bindings["allow"].(bool); !ok {
-		return false, errToCoded(fmt.Errorf("unknown result type: %v", result))
+		return false, fmt.Errorf("unknown result type: %v", result)
 	}
 
 	return results[0].Bindings["allow"].(bool), nil
@@ -217,4 +164,55 @@ func ValidatorGenerator(ctx context.Context, ng *types.NotaryGroup) (chaintree.B
 		return Validator(ctx, ng.DagGetter, tree, blockWithHeaders)
 	}
 	return isOwnerValidator, nil
+}
+
+func interfaceStringsToStrings(inters []interface{}) []string {
+	strings := make([]string, len(inters))
+	for i, inter := range inters {
+		strings[i] = inter.(string)
+	}
+	return strings
+}
+
+func pathsToVals(ctx context.Context, paths []string, tree *dag.Dag, getter graftabledag.DagGetter) (map[string]interface{}, error) {
+	pathToValueMap := make(map[string]interface{})
+	for _, pathStr := range paths {
+
+		var actingDag *dag.Dag
+		var path = []string{}
+
+		if strings.HasPrefix(pathStr, "did:tupelo") {
+			pathParts := strings.Split(pathStr, "/")
+			latest, err := getter.GetLatest(ctx, pathParts[0])
+			if err != nil {
+				return nil, fmt.Errorf("error getting dag: %w", err)
+			}
+			path = pathParts[1:]
+			actingDag = latest.Dag
+		} else {
+			path = strings.Split(pathStr, "/")
+			actingDag = tree
+		}
+		graftingDag, err := graftabledag.New(actingDag, getter)
+		if err != nil {
+			return nil, fmt.Errorf("error creating graftable dag: %w", err)
+		}
+
+		val, _, err := graftingDag.GlobalResolve(ctx, path)
+		if err != nil {
+			return nil, fmt.Errorf("error resolving: %w", err)
+		}
+		pathToValueMap[pathStr] = val
+	}
+	return pathToValueMap, nil
+}
+
+func BlockToInputMap(blockWithHeaders *chaintree.BlockWithHeaders) (PolicyInputMap, error) {
+	inputMap := make(PolicyInputMap)
+
+	err := typecaster.ToType(blockWithHeaders, &inputMap)
+	if err != nil {
+		return nil, fmt.Errorf("error getting input")
+	}
+	return inputMap, nil
 }

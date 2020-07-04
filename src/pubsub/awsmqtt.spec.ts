@@ -1,11 +1,10 @@
 import 'mocha';
 import {expect} from 'chai';
 import './mqtt'; // for the side effect of configuring Amplify
-import { PubSub, Auth } from 'aws-amplify';
+import { PubSub } from 'aws-amplify';
 import {Repo} from '../repo';
 import {Community} from '../community/community';
 import { authenticatePubsub, configurePubSubForAWS, defaultAwsConfig } from './mqtt';
-import { setDataTransaction, ChainTree } from '../chaintree';
 import { EcdsaKey } from '../ecdsa';
 
 const api = 'https://a7s7o22i6d.execute-api.us-east-1.amazonaws.com/demo/graphql';
@@ -30,12 +29,6 @@ describe.skip("AWS MQTT", ()=> {
         await authenticatePubsub(did!, token)
         
         return new Promise(async (resolve,reject) => {
-
-            // PubSub.subscribe('public/trees/did:test:test').subscribe({
-            //     next: data => { console.log('Message received', data); resolve() },
-            //     error: error => console.error("sub (trees) error: ", error),
-            //     complete: () => console.log('Done'),
-            // });
 
             PubSub.subscribe('public/userToUser/test').subscribe({
                 next: data => { console.log('Message received', data); resolve() },
