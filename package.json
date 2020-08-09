@@ -13,7 +13,7 @@
   "dependencies": {
     "@apollo/client": "^3.0.0-beta.48",
     "@apollo/link-context": "^2.0.0-beta.3",
-    "@aws-amplify/pubsub": "^3.0.16",
+    "@aws-amplify/pubsub": "^3.0.23",
     "@types/debug": "^4.1.5",
     "@types/graphql-type-json": "^0.3.2",
     "@types/pbkdf2": "^3.0.0",
@@ -24,7 +24,7 @@
     "cids": "^0.8.0",
     "cross-fetch": "^3.0.4",
     "debug": "^4.1.1",
-    "ethers": "^4.0.47",
+    "ethers": "^5.0.8",
     "google-protobuf": "^3.12.0-rc.1",
     "graphql": "^15.0.0",
     "graphql-type-json": "^0.3.1",
