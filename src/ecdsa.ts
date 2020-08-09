@@ -1,7 +1,9 @@
-import { randomBytes, SigningKey, computeAddress, joinSignature } from 'ethers/utils'
+import { utils } from 'ethers'
 import scrypt from 'scrypt-async-modern'
 import pbkdf2 from 'pbkdf2'
 import debug from 'debug';
+
+const { randomBytes, SigningKey, computeAddress, joinSignature } = utils
 
 const log = debug("ecdsa")
 
