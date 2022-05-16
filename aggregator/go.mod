@@ -7,9 +7,9 @@ require (
 	github.com/aws/aws-sdk-go v1.31.12
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/eclipse/paho.mqtt.golang v1.2.0
-	github.com/ethereum/go-ethereum v1.9.3
+	github.com/ethereum/go-ethereum v1.10.17
 	github.com/fhmq/hmq v0.0.0-20200508032644-1a374f973420
-	github.com/graph-gophers/graphql-go v0.0.0-20200309224638-dae41bde9ef9
+	github.com/graph-gophers/graphql-go v1.3.0
 	github.com/ipfs/go-cid v0.0.5
 	github.com/ipfs/go-datastore v0.4.4
 	github.com/ipfs/go-ipld-cbor v0.0.4
@@ -22,6 +22,6 @@ require (
 	github.com/quorumcontrol/tupelo v0.7.2-0.20200523064345-9250e46da3f4
 	github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b // indirect
 	github.com/stretchr/objx v0.2.0 // indirect
-	github.com/stretchr/testify v1.5.1
+	github.com/stretchr/testify v1.7.0
 	github.com/ugorji/go v1.1.7 // indirect
 )
